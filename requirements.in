@@ -1,0 +1,10 @@
+hydra
+numpy
+pandas
+torch
+pillow
+rich
+torch
+tqdm
+transformers
+bitsandbytes

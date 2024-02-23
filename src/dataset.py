@@ -46,3 +46,4 @@ class COCODataset(Dataset):
         if self.transform is not None:
             img = self.transform(images=img)
         return img, caption["caption"], img_id
+

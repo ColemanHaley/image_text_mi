@@ -1,0 +1,8 @@
+defaults:
+  - dataset: test
+  - _self_
+  - model: mblip_bloom
+batch_size: 8
+language: en
+out_file: results.csv
+num_workers: 1
