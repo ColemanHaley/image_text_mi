@@ -34,52 +34,54 @@ def predict_step(*, caption_model, text_model, tokenizer, batch):
     attention_mask = batch["attention_mask"].to(device)
 
     # the conditional probability of the caption given the image
-    loss_caption = caption_model(
+    logits_cap = caption_model(
         pixel_values=pixel_values,
         input_ids=input_ids,
-        labels=input_ids,
         attention_mask=attention_mask,
-    )
-    loss_text = text_model(
+    ).logits
+    logits_txt = text_model(
         input_ids=input_ids,
         attention_mask=attention_mask,
-        labels=input_ids,
-    )
+    ).logits
 
     tokens = []
     cap_xent = []
-    text_xent = []
+    txt_xent = []
     cap_ent = []
-    text_ent = []
+    txt_ent = []
 
-    batch_size = loss_caption.logits.shape[0]
-    false_prefix = torch.zeros(LEN_CAPTIONING_PREFIX, dtype=torch.bool).to(device)
+    batch_size = logits_cap.shape[0]
+    false_prefix = torch.zeros(LEN_CAPTIONING_PREFIX-1, dtype=torch.bool).to(device)
 
+    logits_cap = logits_cap[..., -input_ids.size(1):-1, :].contiguous()
+    logits_txt = logits_txt[..., :-1, :].contiguous()
     for sentence in range(batch_size):
-        mask = torch.cat([false_prefix, (attention_mask[sentence] == 1)])[
-            :-LEN_CAPTIONING_PREFIX
-        ]
-        tokens.append(input_ids[sentence][mask])
+        pad_len = abs(attention_mask[sentence].sum().item() - input_ids.size(1))
+
+        mask = torch.zeros(input_ids.size(1)-1, dtype=torch.bool).to(device)
+        mask[pad_len+LEN_CAPTIONING_PREFIX-1:] = True
+        labels = input_ids[sentence][1:][mask]
+        tokens.append(labels)
 
         # compute cross-entropy for conditional(captioning) and prior(text) distributions
         cap_xent_sent = torch.nn.functional.cross_entropy(
-            loss_caption.logits[sentence][mask],
-            input_ids[sentence][mask],
+            logits_cap[sentence][mask],
+            labels,
             reduction="none",
         )
-        text_xent_sent = torch.nn.functional.cross_entropy(
-            loss_text.logits[sentence][mask],
-            input_ids[sentence][mask],
+        txt_xent_sent = torch.nn.functional.cross_entropy(
+            logits_txt[sentence][mask],
+            labels,
             reduction="none",
         )
         # compute entropy for conditional and prior distributions
-        cap_ent_sent = Categorical(logits=loss_caption.logits[sentence][mask]).entropy()
-        text_ent_sent = Categorical(logits=loss_text.logits[sentence][mask]).entropy()
+        cap_ent_sent = Categorical(logits=logits_cap[sentence][mask]).entropy()
+        txt_ent_sent = Categorical(logits=logits_txt[sentence][mask]).entropy()
 
         cap_xent.extend(cap_xent_sent.cpu().tolist())
-        text_xent.extend(text_xent_sent.cpu().tolist())
+        txt_xent.extend(txt_xent_sent.cpu().tolist())
         cap_ent.extend(cap_ent_sent.cpu().tolist())
-        text_ent.extend(text_ent_sent.cpu().tolist())
+        txt_ent.extend(txt_ent_sent.cpu().tolist())
 
     tokens = [tokenizer.convert_ids_to_tokens(s) for s in tokens]
 
@@ -88,17 +90,17 @@ def predict_step(*, caption_model, text_model, tokenizer, batch):
     return {
         "token": list(flatten(tokens)),
         "cap_xent": cap_xent,
-        "text_xent": text_xent,
+        "txt_xent": txt_xent,
         "cap_ent": cap_ent,
-        "text_ent": text_ent,
-        "mutual_information": np.array(text_xent) - np.array(cap_xent),
+        "txt_ent": txt_ent,
+        "mutual_information": np.array(txt_xent) - np.array(cap_xent),
         "sentence": list(flatten(index)),
     }
 
 
 def prepare_batch(batch, processor, prefix="Caption the image in English."):
     images, captions, image_paths = zip(*batch)
-    captions = [f"{prefix} {caption}" for caption in captions]
+    captions = [f"{prefix}{caption}" for caption in captions]
     batch = processor(
         images=images,
         text=captions,
@@ -175,7 +177,6 @@ def main(cfg):
     full_results = []
     for batch in tqdm(data):
         with torch.no_grad():
-            print(batch)
             results = predict_step(
                 caption_model=caption_model,
                 text_model=text_model,
