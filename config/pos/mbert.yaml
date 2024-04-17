@@ -1,0 +1,3 @@
+model: "bert-base-multilingual-cased"
+num_tags: 17
+

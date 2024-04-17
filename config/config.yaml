@@ -1,8 +1,9 @@
 defaults:
-  - dataset: test
+  - dataset: coco35
   - _self_
   - model: mblip_bloom
+  - pos: mbert
+  - lang: de 
 batch_size: 8
-language: en
-out_file: results.csv
+out_file: results_de.csv
 num_workers: 1

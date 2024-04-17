@@ -15,7 +15,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 from transformers import Blip2ForConditionalGeneration, Blip2Processor
 
-from dataset import COCODataset
+from dataset import COCODataset, COCO35Dataset
 
 logging.basicConfig(
     handlers=[RichHandler(rich_tracebacks=True)],
@@ -146,6 +146,18 @@ def get_data(cfg, processor):
             num_workers=cfg.num_workers,
             collate_fn=lambda b: prepare_batch(b, processor),
         )
+    elif cfg.dataset.name == "coco35":
+        data = DataLoader(
+            COCO35Dataset(
+                cfg.dataset.path,
+                cfg.dataset.split,
+                cfg.lang.bicode,
+            ),
+            batch_size=cfg.batch_size,
+            shuffle=False,
+            num_workers=cfg.num_workers,
+            collate_fn=lambda b: prepare_batch(b, processor, prefix=f"Caption the image in {cfg.lang.enname}.")
+        )
     elif cfg.dataset.name == "test":
         images = [Image.open(cfg.dataset.path)] * 4 + [Image.open("test2.jpg")]
         captions = [
@@ -166,11 +178,14 @@ def get_data(cfg, processor):
 @hydra.main(config_path="../config", config_name="config", version_base="1.2")
 def main(cfg):
 
-    caption_model, processor = load_model(cfg.model)
+    # caption_model, processor = load_model(cfg.model)
+    processor = Blip2Processor.from_pretrained(
+        cfg.model.path,
+    )
 
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    caption_model.eval().to(device)
-    text_model = caption_model.language_model
+    # device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    # caption_model.eval().to(device)
+    # text_model = caption_model.language_model
 
     data = get_data(cfg, processor)
 
