@@ -1,4 +1,5 @@
 import logging
+import os
 
 import hydra
 import numpy as np
@@ -234,9 +235,11 @@ def main(cfg):
     hydra_output = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
     with open(f"{hydra_output}/{cfg.out_file}", "w") as f:
         pd.concat(full_results, ignore_index=True).to_csv(f)
+    os.symlink(f"{hydra_output}/{cfg.out_file}", f"{hydra_output}/../../{cfg.out_file}")
 
-    with open(f"{hydra_output}/../../{cfg.out_file}", "w") as f:
-        pd.concat(full_results, ignore_index=True).to_csv(f)
+
+    # with open(f"{hydra_output}/../../{cfg.out_file}", "w") as f:
+    #     pd.concat(full_results, ignore_index=True).to_csv(f)
     # with open("outputs/{cfg.out_file}", "w") as f:
     #     pd.concat(full_results, ignore_index=True).to_csv(f)
 

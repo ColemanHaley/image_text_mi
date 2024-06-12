@@ -3,4 +3,7 @@ data/
 scripts/
 outputs/
 logs/
+data2
+.snakemake/
+test/
 data
