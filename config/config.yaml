@@ -1,9 +1,9 @@
 defaults:
   - dataset: coco35
   - _self_
-  - model: mblip_bloom
+  - model: paligemma
   - pos: mbert
-  - lang: de 
 batch_size: 8
 out_file: results_de.csv
 num_workers: 1
+lang: de

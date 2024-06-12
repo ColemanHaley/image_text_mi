@@ -1,9 +1,44 @@
 import json
+import sys
 from pathlib import Path
 
 from PIL import Image
 from torch.utils.data import Dataset
 from tqdm.rich import tqdm
+
+class XM3600Dataset(Dataset):
+    def __init__(self, data_dir, lang, transform=None):
+        self.data_dir = Path(data_dir)
+        self.transform = transform
+        self.lang=lang
+        with open(Path(self.data_dir) / "xm3600" / "captions.jsonl", "r") as f:
+            captions = [json.loads(jline) for jline in f.readlines()]
+            # TODO: what if error?
+        self.captions = self._get_split(captions)
+
+    def _get_split(self, captions):
+        data = []
+        for cap in tqdm(captions):
+            for c in cap[self.lang]['caption']:
+                data.append({'caption': c, 'image': cap['image/key']})
+        return data
+
+    def __len__(self):
+        return len(self.captions)
+
+    def __getitem__(self, idx):
+        caption = self.captions[idx]
+        path = (
+            self.data_dir
+            / "xm3600" / f"{caption['image']}.jpg"
+        )
+        img = Image.open(path)
+        if img.mode != "RGB":
+            img = img.convert(mode="RGB")
+        if self.transform is not None:
+            img = self.transform(images=img)
+        return img, caption["caption"], caption['image']
+
 
 
 class COCO35Dataset(Dataset):
@@ -21,8 +56,18 @@ class COCO35Dataset(Dataset):
     def _get_split(self, captions):
         data = []
         for cap in tqdm(captions):
+            img_id = int(cap["image_id"].split("_")[0])
+            path = (
+                self.data_dir
+                / f"val2014" / "val2014"
+                / f"COCO_val2014_{img_id:012d}.jpg"
+            )
             if cap["trg_lang"] == self.lang:
-                data.append(cap)
+                if path.is_file():
+                    data.append(cap)
+                else:
+                    print(f"Image not found: {path}", file=sys.stderr)
+
         return data
 
     def __len__(self):
@@ -30,12 +75,13 @@ class COCO35Dataset(Dataset):
 
     def __getitem__(self, idx):
         caption = self.captions[idx]
-        img_id = int(caption["image_id"])
+        img_id = int(caption["image_id"].split("_")[0])
         path = (
             self.data_dir
-            / f"val2017/val2017"
-            / f"{img_id:012d}.jpg"
+            / f"val2014" / "val2014"
+            / f"COCO_val2014_{img_id:012d}.jpg"
         )
+        #img_id = int(caption["image_id"].split("_")[0])
         img = Image.open(path)
         if img.mode != "RGB":
             img = img.convert(mode="RGB")

@@ -19,7 +19,7 @@ from transformers import (
     AutoProcessor,
 )
 
-from dataset import COCODataset, COCO35Dataset, XM3600Dataset
+from dataset import COCODataset, COCO35Dataset
 
 logging.basicConfig(
     handlers=[RichHandler(rich_tracebacks=True)],
@@ -55,16 +55,15 @@ def predict_step(caption_model, text_model, tokenizer, batch, prefix_len):
     txt_ent = []
 
     batch_size = logits_cap.shape[0]
+    #false_prefix = torch.zeros(prefix_len - 1, dtype=torch.bool).to(device)
 
     logits_cap = logits_cap[..., -input_ids.size(1) : -1, :].contiguous()
     logits_txt = logits_txt[..., :-1, :].contiguous()
     for sentence in range(batch_size):
-        pad = (input_ids[sentence] == 257152).sum().item() + abs(attention_mask[sentence].sum().item() - input_ids.size(1))
-        pad_len = pad - input_ids.size(1)
+        pad_len = abs(attention_mask[sentence].sum().item() - input_ids.size(1))
 
         mask = torch.zeros(input_ids.size(1) - 1, dtype=torch.bool).to(device)
-        mask[pad_len + (prefix_len + 1):] = True
-
+        mask[pad_len + prefix_len - 1 :] = True
         labels = input_ids[sentence][1:][mask]
         tokens.append(labels)
 
@@ -142,7 +141,7 @@ def load_model(cfg):
 
 def get_data(cfg, processor):
     # compute prefix length
-    prefix = f"caption {cfg.lang}\n"
+    prefix = f"caption {cfg.lang}"
     prefix_len = len(processor.tokenizer(prefix)["input_ids"])
 
     if cfg.dataset.name == "coco":
@@ -155,17 +154,6 @@ def get_data(cfg, processor):
             shuffle=False,
             num_workers=cfg.num_workers,
             collate_fn=lambda b: prepare_batch(b, processor),
-        )
-    elif cfg.dataset.name == "xm3600":
-        data = DataLoader(
-            XM3600Dataset(
-                cfg.dataset.path,
-                cfg.lang,
-            ),
-            batch_size=cfg.batch_size,
-            shuffle=False,
-            num_workers=cfg.num_workers,
-            collate_fn=lambda b: prepare_batch(b, processor, prefix=prefix),
         )
     elif cfg.dataset.name == "coco35":
         data = DataLoader(
@@ -233,9 +221,6 @@ def main(cfg):
 
     hydra_output = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
     with open(f"{hydra_output}/{cfg.out_file}", "w") as f:
-        pd.concat(full_results, ignore_index=True).to_csv(f)
-
-    with open(f"{hydra_output}/../../{cfg.out_file}", "w") as f:
         pd.concat(full_results, ignore_index=True).to_csv(f)
     # with open("outputs/{cfg.out_file}", "w") as f:
     #     pd.concat(full_results, ignore_index=True).to_csv(f)
