@@ -11,7 +11,6 @@ from rich import traceback
 from rich.logging import RichHandler
 from torch.distributions import Categorical
 from torch.utils.data import DataLoader
-
 # from tqdm.rich import tqdm
 from tqdm import tqdm
 from transformers import (
@@ -183,10 +182,10 @@ def get_data(cfg, processor):
     elif cfg.dataset.name == "test":
         images = [Image.open(cfg.dataset.path)] * 4 + [Image.open("test2.jpg")]
         captions = [
-            # "A test sentence.",
+            "A test sentence.",
             "A bicycle replica with a clock as the front wheel.",
             "A cat is laying on top of a dryer.",
-            # "A test sentence with indubitably obscure verbage.",
+            "A test sentence with indubitably obscure verbage.",
             "Two dogs and a cat.",
             "Two cats and a dog.",
             "A bicycle replica with a clock as the front wheel.",

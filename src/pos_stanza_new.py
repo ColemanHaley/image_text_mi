@@ -54,12 +54,14 @@ df['word_stanza'] = '#SKIP#'
 #print(df)
 
 df_sent = df.groupby('sentence').first().reset_index()[['caption', 'sentence']]
-nlp = stanza.Pipeline(sys.argv[1], processors="tokenize,mwt,pos")
+try:
+    nlp = stanza.Pipeline(sys.argv[1], processors="tokenize,mwt,pos")
+except Exception:
+    nlp = stanza.Pipeline(sys.argv[1], processors="tokenize,pos")
 
 documents = df_sent['caption'].tolist()
 in_docs = [stanza.Document([], text=doc) for doc in documents]
 out_docs = nlp(in_docs)
-df
 for i, doc in enumerate(out_docs):
     cap_info = df[df['sentence'] == i]
     # print(cap_info)
