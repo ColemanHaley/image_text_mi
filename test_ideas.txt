@@ -1,0 +1,15 @@
+captioning model:
+  probability of congruous caption higher than incongruous caption
+  probability of caption higher than non caption
+  probability of language matches prompt
+
+text model:
+  probability of likely incongruous caption higher than congruous caption
+  probability of infrequent word higher in salient context than in non-salient context
+  grammatical errors less probable
+  probability of language matches prompt
+  probability of high frequency ungrammatical sentence lower than low frequency ungrammatical sentence
+  probability under caption tuned model higher than base model
+  probability of caption higher than non caption
+  probability of entity not modulated by image
+

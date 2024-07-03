@@ -14,7 +14,7 @@ rule coco_images:
         split="train2014|val2014|test2014|val2017"
     shell:
         """
-        wget http://images.cocodataset.org/zips/{{wildcards.split}}.zip
+        wget http://images.cocodataset.org/zips/{wildcards.split}.zip
         unzip {wildcards.split}.zip
         mkdir -p data/coco/{wildcards.split}
         mv {wildcards.split} data/coco/{wildcards.split}
@@ -52,6 +52,12 @@ rule coco_35_annotations:
         mv coco_mt_{wildcards.split}.jsonl {SCRATCH}data/coco/annotations/{wildcards.split}_35_caption.jsonl
         """
 
+rule blank_coco35:
+    output:
+        "data/coco/blank.jpg"
+    shell:
+        "convert -size 224x224 xc:black {output}"
+
 rule coco_annotations:
     output:
         f"data/coco/annotations/train_caption.json"
@@ -63,6 +69,12 @@ rule coco_val:
         "data/coco/val2014",
         "data/coco/annotations/dev_35_caption.jsonl",
         "data/coco/annotations/train_caption.json",
+
+rule coco35:
+    input:
+      "data/coco/val2014",
+      "data/coco/annotations/dev_35_caption.jsonl",
+      "data/coco/annotations/train_35_caption.jsonl",
 
 rule xm3600:
   input:

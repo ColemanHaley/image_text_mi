@@ -40,6 +40,98 @@ class XM3600Dataset(Dataset):
         return img, caption["caption"], caption['image']
 
 
+class COCO35TextDataset(Dataset):
+    def __init__(self, data_dir, split, transform=None):
+        self.data_dir = Path(data_dir)
+        self.split = split
+        assert self.split in ["dev", "train"]
+        
+        self.transform = transform
+        with open(Path(self.data_dir) / "annotations" / f"{self.split}_35_caption.jsonl", "r") as f:
+            captions = [json.loads(jline) for jline in f.readlines()]
+            # TODO: what if error?
+        self.captions = self._get_split(captions)
+        path = self.data_dir / "blank.jpg"
+        img = Image.open(path)
+        if img.mode != "RGB":
+            img = img.convert(mode="RGB")
+        if self.transform is not None:
+            img = self.transform(images=img)
+        self.img = img
+
+    def _get_split(self, captions):
+        data = []
+        # for cap in tqdm(captions):
+        #     img_id = int(cap["image_id"].split("_")[0])
+        #     path = (
+        #         self.data_dir
+        #         / f"val2014" / "val2014"
+        #         / f"COCO_val2014_{img_id:012d}.jpg"
+        #     )
+
+        #     if self.split == "train" and not path.is_file():
+        #         data.append(cap)
+        #     elif self.split == "dev" and path.is_file():
+        #         data.append(cap)
+        #     else:
+        #         print(f"Image not found: {path}", file=sys.stderr)
+
+        return captions # should be `data` if you revive this method!
+
+    def __len__(self):
+        return len(self.captions)
+
+    def __getitem__(self, idx):
+        caption = self.captions[idx]
+        return f'caption {caption["trg_lang"]}\n{caption["translation_tokenized"]}'
+
+
+class COCO35LMDataset(Dataset):
+    def __init__(self, data_dir, split, transform=None):
+        self.data_dir = Path(data_dir)
+        self.split = split
+        assert self.split in ["dev", "train"]
+        
+        self.transform = transform
+        with open(Path(self.data_dir) / "annotations" / f"{self.split}_35_caption.jsonl", "r") as f:
+            captions = [json.loads(jline) for jline in f.readlines()]
+            # TODO: what if error?
+        self.captions = self._get_split(captions)
+        path = self.data_dir / "blank.jpg"
+        img = Image.open(path)
+        if img.mode != "RGB":
+            img = img.convert(mode="RGB")
+        if self.transform is not None:
+            img = self.transform(images=img)
+        self.img = img
+
+    def _get_split(self, captions):
+        data = []
+        # for cap in tqdm(captions):
+        #     img_id = int(cap["image_id"].split("_")[0])
+        #     path = (
+        #         self.data_dir
+        #         / f"val2014" / "val2014"
+        #         / f"COCO_val2014_{img_id:012d}.jpg"
+        #     )
+
+        #     if self.split == "train" and not path.is_file():
+        #         data.append(cap)
+        #     elif self.split == "dev" and path.is_file():
+        #         data.append(cap)
+        #     else:
+        #         print(f"Image not found: {path}", file=sys.stderr)
+
+        return captions # should be `data` if you revive this method!
+
+    def __len__(self):
+        return len(self.captions)
+
+    def __getitem__(self, idx):
+        caption = self.captions[idx]
+        img_id = int(caption["image_id"].split("_")[0])
+        return self.img, caption["translation_tokenized"], caption['trg_lang']
+
 
 class COCO35Dataset(Dataset):
     def __init__(self, data_dir, split, lang, transform=None):

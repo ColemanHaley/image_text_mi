@@ -11,12 +11,14 @@ from rich import traceback
 from rich.logging import RichHandler
 from torch.distributions import Categorical
 from torch.utils.data import DataLoader
+
 # from tqdm.rich import tqdm
 from tqdm import tqdm
 from transformers import (
     Blip2ForConditionalGeneration,
     PaliGemmaForConditionalGeneration,
     AutoProcessor,
+    AutoModel,
 )
 
 from dataset import COCODataset, COCO35Dataset, XM3600Dataset
@@ -25,13 +27,51 @@ logging.basicConfig(
     handlers=[RichHandler(rich_tracebacks=True)],
 )
 
-LEN_CAPTIONING_PREFIX = 2  # TODO: compute prefix length
-
 traceback.install()
+
+IMAGE_TOKEN_ID = 257152
+
+
+def get_mask_paligemma(sentence, input_ids, attention_mask, prefix_len):
+    pad = (input_ids[sentence] == IMAGE_TOKEN_ID).sum().item() + abs(
+        attention_mask[sentence].sum().item() - input_ids.size(1)
+    )
+    pad_len = pad - input_ids.size(1)
+    mask = torch.zeros(input_ids.size(1) - 1, dtype=torch.bool)
+    mask[pad_len + (prefix_len + 1) :] = True
+    return mask
+    
+
+def get_logprobs(logits, input_ids, mask_fn):
+    batch_size = logits.shape[0]
+    results = []
+    tokens = []
+    device = logits.device
+    for i in range(batch_size):
+        mask = mask_fn(i).to(device)
+        labels = input_ids[i][1:][mask]
+        tokens.append(labels)
+
+       # xent = torch.nn.functional.cross_entropy(logits[i][mask], labels, reduction="none").cpu().tolist()
+        logprobs = torch.nn.functional.log_softmax(logits[i][mask], dim=-1).cpu()
+        xent = logprobs[labels].tolist()
+        for j, token_id in enumerate(labels):
+            correction = correct_for_spaces(token_id, logprobs[j])
+            if j > 0:
+                xent[j-1] -= correction
+            xent[j] += correction
+
+        results.extend(-logprobs.tolist())
+    return results, tokens
+
+def correct_for_spaces(token_id, logprobs):
+    correction = 0
+    if token_id in whitespace_tokens:
+        correction = torch.logsumexp(logprobs[whitespace_tokens])
+    return correction
 
 
 def predict_step(caption_model, text_model, tokenizer, batch, prefix_len):
-
     device = caption_model.device
     pixel_values = batch["pixel_values"].to(device)
     input_ids = batch["input_ids"].to(device)
@@ -48,57 +88,25 @@ def predict_step(caption_model, text_model, tokenizer, batch, prefix_len):
         attention_mask=attention_mask,
     ).logits
 
-    tokens = []
-    cap_xent = []
-    txt_xent = []
-    cap_ent = []
-    txt_ent = []
-
-    batch_size = logits_cap.shape[0]
-
     logits_cap = logits_cap[..., -input_ids.size(1) : -1, :].contiguous()
     logits_txt = logits_txt[..., :-1, :].contiguous()
-    for sentence in range(batch_size):
-        pad = (input_ids[sentence] == 257152).sum().item() + abs(attention_mask[sentence].sum().item() - input_ids.size(1))
-        pad_len = pad - input_ids.size(1)
 
-        mask = torch.zeros(input_ids.size(1) - 1, dtype=torch.bool).to(device)
-        mask[pad_len + (prefix_len + 1):] = True
+    def mask_paligemma(x):
+        get_mask_paligemma(x, input_ids, attention_mask, prefix_len)
 
-        labels = input_ids[sentence][1:][mask]
-        tokens.append(labels)
+    txt_probs, txt_labels = get_logprobs(logits_txt, input_ids, mask_paligemma)
+    cap_probs, cap_labels = get_logprobs(logits_cap, input_ids, mask_paligemma)
+    txt_labels = [tokenizer.batch_decode(s) for s in txt_labels]
+    cap_labels = [tokenizer.batch_decode(s) for s in cap_labels]
+    assert txt_labels == cap_labels
 
-        # compute cross-entropy for conditional(captioning) and prior(text) distributions
-        cap_xent_sent = torch.nn.functional.cross_entropy(
-            logits_cap[sentence][mask],
-            labels,
-            reduction="none",
-        )
-        txt_xent_sent = torch.nn.functional.cross_entropy(
-            logits_txt[sentence][mask],
-            labels,
-            reduction="none",
-        )
-        # compute entropy for conditional and prior distributions
-        cap_ent_sent = Categorical(logits=logits_cap[sentence][mask]).entropy()
-        txt_ent_sent = Categorical(logits=logits_txt[sentence][mask]).entropy()
-
-        cap_xent.extend(cap_xent_sent.cpu().tolist())
-        txt_xent.extend(txt_xent_sent.cpu().tolist())
-        cap_ent.extend(cap_ent_sent.cpu().tolist())
-        txt_ent.extend(txt_ent_sent.cpu().tolist())
-
-    tokens = [tokenizer.batch_decode(s) for s in tokens]
-
-    index = [len(sent) * [i] for i, sent in enumerate(tokens)]
+    index = [len(sent) * [i] for i, sent in enumerate(cap_labels)]
 
     return {
-        "token": list(flatten(tokens)),
-        "cap_xent": cap_xent,
-        "txt_xent": txt_xent,
-        "cap_ent": cap_ent,
-        "txt_ent": txt_ent,
-        "mutual_information": np.array(txt_xent) - np.array(cap_xent),
+        "token": list(flatten(cap_labels)),
+        "cap_xent": cap_probs,
+        "txt_xent": txt_probs,
+        "mutual_information": np.array(txt_probs) - np.array(cap_probs),
         "sentence": list(flatten(index)),
     }
 
@@ -188,7 +196,7 @@ def get_data(cfg, processor):
             "A test sentence with indubitably obscure verbage.",
             "Two dogs and a cat.",
             "Two cats and a dog.",
-            "A bicycle replica with a clock as the front wheel.",
+            "the the the the the." "A bicycle replica with a clock as the front wheel.",
         ]
         image_paths = [cfg.dataset.path] * 4 + ["test2.jpg"]
         data = [prepare_batch(zip(*(images, captions, image_paths)), processor)]
@@ -199,7 +207,6 @@ def get_data(cfg, processor):
 
 @hydra.main(config_path="../config", config_name="config", version_base="1.2")
 def main(cfg):
-
     processor = AutoProcessor.from_pretrained(
         cfg.model.path,
     )
@@ -209,7 +216,8 @@ def main(cfg):
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     caption_model.eval().to(device)
-    text_model = caption_model.language_model
+    #text_model = caption_model.language_model
+    text_model = AutoModel.from_pretrained('google/gemma-2b')
 
     data, prefix_len = get_data(cfg, processor)
 
@@ -235,13 +243,6 @@ def main(cfg):
     with open(f"{hydra_output}/{cfg.out_file}", "w") as f:
         pd.concat(full_results, ignore_index=True).to_csv(f)
     os.symlink(f"{hydra_output}/{cfg.out_file}", f"{hydra_output}/../../{cfg.out_file}")
-
-
-    # with open(f"{hydra_output}/../../{cfg.out_file}", "w") as f:
-    #     pd.concat(full_results, ignore_index=True).to_csv(f)
-    # with open("outputs/{cfg.out_file}", "w") as f:
-    #     pd.concat(full_results, ignore_index=True).to_csv(f)
-
 
 if __name__ == "__main__":
     main()
