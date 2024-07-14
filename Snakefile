@@ -27,7 +27,7 @@ rule xm3600_images:
         """
         mkdir -p data/xm3600/images
         wget https://open-images-dataset.s3.amazonaws.com/crossmodal-3600/images.tgz
-        tar -xvzf {SCRATCH}images.tgz -C data/xm3600/images
+        tar -xvzf images.tgz -C data/xm3600/images
         rm images.tgz
         """
 
@@ -49,7 +49,7 @@ rule coco_35_annotations:
         wget https://storage.googleapis.com/crossmodal-3600/coco_mt_{wildcards.split}.jsonl.bz2 
         bunzip2 -f coco_mt_{wildcards.split}.jsonl.bz2 
         mkdir -p data/coco/annotations
-        mv coco_mt_{wildcards.split}.jsonl {SCRATCH}data/coco/annotations/{wildcards.split}_35_caption.jsonl
+        mv coco_mt_{wildcards.split}.jsonl data/coco/annotations/{wildcards.split}_35_caption.jsonl
         """
 
 rule blank_coco35:

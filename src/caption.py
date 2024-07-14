@@ -18,9 +18,10 @@ from transformers import (
     Blip2ForConditionalGeneration,
     PaliGemmaForConditionalGeneration,
     AutoProcessor,
-    AutoModel,
+    AutoTokenizer,
+    AutoModelForCausalLM,
 )
-
+from peft import PeftModel
 from dataset import COCODataset, COCO35Dataset, XM3600Dataset
 
 logging.basicConfig(
@@ -38,7 +39,7 @@ def get_mask_paligemma(sentence, input_ids, attention_mask, prefix_len):
     )
     pad_len = pad - input_ids.size(1)
     mask = torch.zeros(input_ids.size(1) - 1, dtype=torch.bool)
-    mask[pad_len + (prefix_len + 1) :] = True
+    mask[pad_len + (prefix_len) :] = True
     return mask
     
 
@@ -53,29 +54,31 @@ def get_logprobs(logits, input_ids, mask_fn):
         tokens.append(labels)
 
        # xent = torch.nn.functional.cross_entropy(logits[i][mask], labels, reduction="none").cpu().tolist()
-        logprobs = torch.nn.functional.log_softmax(logits[i][mask], dim=-1).cpu()
-        xent = logprobs[labels].tolist()
+        logprobs = torch.nn.functional.log_softmax(logits[i][mask], dim=-1)
+        xent = torch.gather(logprobs, -1, labels.unsqueeze(-1)).squeeze()
         for j, token_id in enumerate(labels):
             correction = correct_for_spaces(token_id, logprobs[j])
             if j > 0:
                 xent[j-1] -= correction
             xent[j] += correction
 
-        results.extend(-logprobs.tolist())
+        results.extend((-xent.cpu()).tolist())
     return results, tokens
 
 def correct_for_spaces(token_id, logprobs):
     correction = 0
-    if token_id in whitespace_tokens:
-        correction = torch.logsumexp(logprobs[whitespace_tokens])
+    # if token_id in whitespace_tokens:
+    #     correction = torch.logsumexp(logprobs[whitespace_tokens])
     return correction
 
 
 def predict_step(caption_model, text_model, tokenizer, batch, prefix_len):
+    tokenizer, tokenizer_txt = tokenizer
     device = caption_model.device
     pixel_values = batch["pixel_values"].to(device)
     input_ids = batch["input_ids"].to(device)
     attention_mask = batch["attention_mask"].to(device)
+    sents = tokenizer.batch_decode(input_ids)
 
     # the conditional probability of the caption given the image
     logits_cap = caption_model(
@@ -83,6 +86,12 @@ def predict_step(caption_model, text_model, tokenizer, batch, prefix_len):
         input_ids=input_ids,
         attention_mask=attention_mask,
     ).logits
+
+    batch = tokenizer(batch.captions, return_tensors='pt', padding="longest")
+    input_ids = batch["input_ids"].to(device)
+
+    attention_mask = batch["attention_mask"].to(device)
+
     logits_txt = text_model(
         input_ids=input_ids,
         attention_mask=attention_mask,
@@ -92,20 +101,21 @@ def predict_step(caption_model, text_model, tokenizer, batch, prefix_len):
     logits_txt = logits_txt[..., :-1, :].contiguous()
 
     def mask_paligemma(x):
-        get_mask_paligemma(x, input_ids, attention_mask, prefix_len)
+        return get_mask_paligemma(x, input_ids, attention_mask, prefix_len)
 
-    txt_probs, txt_labels = get_logprobs(logits_txt, input_ids, mask_paligemma)
     cap_probs, cap_labels = get_logprobs(logits_cap, input_ids, mask_paligemma)
+    txt_probs, txt_labels = get_logprobs(logits_txt, input_ids, mask_paligemma)
     txt_labels = [tokenizer.batch_decode(s) for s in txt_labels]
     cap_labels = [tokenizer.batch_decode(s) for s in cap_labels]
     assert txt_labels == cap_labels
 
     index = [len(sent) * [i] for i, sent in enumerate(cap_labels)]
+    # print(list(zip(list(flatten(cap_labels)), list(flatten(txt_probs)), list(flatten(cap_probs)))))
 
     return {
         "token": list(flatten(cap_labels)),
-        "cap_xent": cap_probs,
-        "txt_xent": txt_probs,
+        "cap_xent":list(flatten(cap_probs)),
+        "txt_xent":list(flatten(txt_probs)),
         "mutual_information": np.array(txt_probs) - np.array(cap_probs),
         "sentence": list(flatten(index)),
     }
@@ -209,6 +219,7 @@ def get_data(cfg, processor):
 def main(cfg):
     processor = AutoProcessor.from_pretrained(
         cfg.model.path,
+        padding_side='right',
     )
     data = get_data(cfg, processor)
 
@@ -217,7 +228,10 @@ def main(cfg):
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     caption_model.eval().to(device)
     #text_model = caption_model.language_model
-    text_model = AutoModel.from_pretrained('google/gemma-2b')
+    text_model = AutoModelForCausalLM.from_pretrained('google/gemma-2b')
+    text_model = PeftModel.from_pretrained(text_model, "chaley22/gemma-captioning-lora")
+    text_model.eval().to(device)
+    tokenizer = AutoTokenizer.from_pretrained('google/gemma-2b')
 
     data, prefix_len = get_data(cfg, processor)
 
@@ -226,8 +240,8 @@ def main(cfg):
         with torch.no_grad():
             results = predict_step(
                 caption_model=caption_model,
+                tokenizer=(processor.tokenizer, tokenizer),
                 text_model=text_model,
-                tokenizer=processor.tokenizer,
                 batch=batch,
                 prefix_len=prefix_len,
             )

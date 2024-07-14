@@ -19,7 +19,7 @@ class XM3600Dataset(Dataset):
     def _get_split(self, captions):
         data = []
         for cap in tqdm(captions):
-            for c in cap[self.lang]['caption']:
+            for c in cap[self.lang]['caption/tokenized']:
                 data.append({'caption': c, 'image': cap['image/key']})
         return data
 
@@ -30,7 +30,7 @@ class XM3600Dataset(Dataset):
         caption = self.captions[idx]
         path = (
             self.data_dir
-            / "xm3600" / f"{caption['image']}.jpg"
+            / "xm3600" / "images" / f"{caption['image']}.jpg"
         )
         img = Image.open(path)
         if img.mode != "RGB":

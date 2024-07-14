@@ -12,3 +12,4 @@ bitsandbytes
 stanza
 snakemake
 huggingface_hub[cli]
+peft
