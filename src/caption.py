@@ -34,27 +34,39 @@ IMAGE_TOKEN_ID = 257152
 
 
 def get_mask_paligemma(sentence, input_ids, attention_mask, prefix_len):
-    pad = (input_ids[sentence] == IMAGE_TOKEN_ID).sum().item() + abs(
+    img = (input_ids[sentence] == IMAGE_TOKEN_ID).sum().item() 
+    pad =  abs(
         attention_mask[sentence].sum().item() - input_ids.size(1)
     )
-    pad_len = pad - input_ids.size(1)
-    mask = torch.zeros(input_ids.size(1) - 1, dtype=torch.bool)
-    mask[pad_len + (prefix_len) :] = True
+    
+
+    mask = torch.zeros(input_ids.size(1), dtype=torch.bool)
+    mask[img + (prefix_len+1):] = True
+    mask[-pad:] = False
     return mask
     
 
-def get_logprobs(logits, input_ids, mask_fn):
+def get_logprobs(logits, input_ids, mask_fn, tokenizer):
     batch_size = logits.shape[0]
     results = []
     tokens = []
     device = logits.device
     for i in range(batch_size):
         mask = mask_fn(i).to(device)
-        labels = input_ids[i][1:][mask]
+        labels = input_ids[i][mask]
         tokens.append(labels)
+        # print(tokenizer.batch_decode(input_ids[i]))
+        # print(tokenizer.batch_decode(input_ids[i][:-1][mask[1:]]))
+        # print(tokenizer.batch_decode(input_ids[i][mask]))
+        # print(logits.size())
+        # print(input_ids.size())
 
        # xent = torch.nn.functional.cross_entropy(logits[i][mask], labels, reduction="none").cpu().tolist()
-        logprobs = torch.nn.functional.log_softmax(logits[i][mask], dim=-1)
+        logprobs = torch.nn.functional.log_softmax(logits[i][:-1][mask[1:]], dim=-1)
+        topk = torch.topk(logprobs, 10)
+        # print(tokenizer.batch_decode(topk.indices))
+        # print(topk.values)
+        # break
         xent = torch.gather(logprobs, -1, labels.unsqueeze(-1)).squeeze()
         for j, token_id in enumerate(labels):
             correction = correct_for_spaces(token_id, logprobs[j])
@@ -86,8 +98,15 @@ def predict_step(caption_model, text_model, tokenizer, batch, prefix_len):
         input_ids=input_ids,
         attention_mask=attention_mask,
     ).logits
+    def mask_paligemma(x):
+        return get_mask_paligemma(x, input_ids, attention_mask, prefix_len)
 
-    batch = tokenizer(batch.captions, return_tensors='pt', padding="longest")
+    # logits_cap = logits_cap[..., -input_ids.size(1) : -1, :].contiguous()
+
+    cap_probs, cap_labels = get_logprobs(logits_cap, input_ids, mask_paligemma, tokenizer)
+
+    captions = [c+"\n" for c in batch.captions]
+    batch = tokenizer_txt(captions, return_tensors='pt', padding="longest", add_special_tokens=True)
     input_ids = batch["input_ids"].to(device)
 
     attention_mask = batch["attention_mask"].to(device)
@@ -97,14 +116,13 @@ def predict_step(caption_model, text_model, tokenizer, batch, prefix_len):
         attention_mask=attention_mask,
     ).logits
 
-    logits_cap = logits_cap[..., -input_ids.size(1) : -1, :].contiguous()
-    logits_txt = logits_txt[..., :-1, :].contiguous()
+    # logits_txt = logits_txt[..., :-1, :].contiguous()
 
     def mask_paligemma(x):
         return get_mask_paligemma(x, input_ids, attention_mask, prefix_len)
 
-    cap_probs, cap_labels = get_logprobs(logits_cap, input_ids, mask_paligemma)
-    txt_probs, txt_labels = get_logprobs(logits_txt, input_ids, mask_paligemma)
+
+    txt_probs, txt_labels = get_logprobs(logits_txt, input_ids, mask_paligemma, tokenizer)
     txt_labels = [tokenizer.batch_decode(s) for s in txt_labels]
     cap_labels = [tokenizer.batch_decode(s) for s in cap_labels]
     assert txt_labels == cap_labels
@@ -112,13 +130,15 @@ def predict_step(caption_model, text_model, tokenizer, batch, prefix_len):
     index = [len(sent) * [i] for i, sent in enumerate(cap_labels)]
     # print(list(zip(list(flatten(cap_labels)), list(flatten(txt_probs)), list(flatten(cap_probs)))))
 
-    return {
+    data = {
         "token": list(flatten(cap_labels)),
         "cap_xent":list(flatten(cap_probs)),
         "txt_xent":list(flatten(txt_probs)),
         "mutual_information": np.array(txt_probs) - np.array(cap_probs),
         "sentence": list(flatten(index)),
     }
+    #print(pd.DataFrame(data))
+    return data
 
 
 def prepare_batch(batch, processor, prefix="Caption the image in English."):
@@ -231,7 +251,10 @@ def main(cfg):
     text_model = AutoModelForCausalLM.from_pretrained('google/gemma-2b')
     text_model = PeftModel.from_pretrained(text_model, "chaley22/gemma-captioning-lora")
     text_model.eval().to(device)
-    tokenizer = AutoTokenizer.from_pretrained('google/gemma-2b')
+    tokenizer = AutoTokenizer.from_pretrained('google/gemma-2b', padding_side="right")
+    num = tokenizer.add_special_tokens({"eos_token": "\n"})
+    processor.tokenizer.padding_side = "right"
+
 
     data, prefix_len = get_data(cfg, processor)
 
