@@ -1,4 +1,5 @@
-SCRATCH="/exports/eddie/scratch/s2189251/grounded/"
+storage:
+    provider="http",
 localrules: all_3600, all_coco
 LANGS = [
   'ar', 'bn', 'cs', 'da', 'de', 'el', 'en', 'es', 'fa',
@@ -6,19 +7,32 @@ LANGS = [
   'ja', 'ko', 'mi', 'nl', 'no', 'pl', 'pt', 'ro', 'ru',
   'sv', 'sw', 'te', 'th', 'tr', 'uk', 'vi', 'zh'
 ] # Drop quz b/c of COCO. 
-
 rule coco_images:
+    input:
+      "data/coco/{split}.zip"
     output:
         directory("data/coco/{split}")
     wildcard_constraints:
-        split="train2014|val2014|test2014|val2017"
+        split="train2014|val2014|test2014|val2017|train2017"
     shell:
-        """
-        wget http://images.cocodataset.org/zips/{wildcards.split}.zip
-        unzip {wildcards.split}.zip
-        mkdir -p data/coco/{wildcards.split}
-        mv {wildcards.split} data/coco/{wildcards.split}
-        """
+        "cd data/coco && unzip {wildcards.split}.zip"
+
+rule coco_imgz:
+  output:
+    temp("data/coco/{split}.zip")
+  wildcard_constraints:
+    split="train2014|val2014|test2014|val2017|train2017"
+  shell:
+    "wget http://images.cocodataset.org/zips/{wildcards.split}.zip -O {output}"
+
+rule avg_img:
+  input:
+    "data/coco/train2017"
+  output:
+    "data/coco/avg_train_224.jpg"
+  shell:
+    "python src/average_image.py {input} {output} --size 224"
+    
 
 rule xm3600_images:
     output:
@@ -72,7 +86,8 @@ rule coco_val:
 
 rule coco35:
     input:
-      "data/coco/val2014",
+      "data/coco/val2017",
+      "data/coco/train2017",
       "data/coco/annotations/dev_35_caption.jsonl",
       "data/coco/annotations/train_35_caption.jsonl",
 

@@ -41,42 +41,32 @@ class XM3600Dataset(Dataset):
 
 
 class COCO35TextDataset(Dataset):
-    def __init__(self, data_dir, split, transform=None):
+    def __init__(self, data_dir, split, lang="all", transform=None):
         self.data_dir = Path(data_dir)
         self.split = split
-        assert self.split in ["dev", "train"]
+        assert self.split in ["dev", "train", "dev_sub"]
+        self.lang = lang
         
         self.transform = transform
         with open(Path(self.data_dir) / "annotations" / f"{self.split}_35_caption.jsonl", "r") as f:
             captions = [json.loads(jline) for jline in f.readlines()]
             # TODO: what if error?
         self.captions = self._get_split(captions)
-        path = self.data_dir / "blank.jpg"
-        img = Image.open(path)
-        if img.mode != "RGB":
-            img = img.convert(mode="RGB")
-        if self.transform is not None:
-            img = self.transform(images=img)
-        self.img = img
 
     def _get_split(self, captions):
         data = []
-        # for cap in tqdm(captions):
-        #     img_id = int(cap["image_id"].split("_")[0])
-        #     path = (
-        #         self.data_dir
-        #         / f"val2014" / "val2014"
-        #         / f"COCO_val2014_{img_id:012d}.jpg"
-        #     )
-
-        #     if self.split == "train" and not path.is_file():
-        #         data.append(cap)
-        #     elif self.split == "dev" and path.is_file():
-        #         data.append(cap)
-        #     else:
-        #         print(f"Image not found: {path}", file=sys.stderr)
-
-        return captions # should be `data` if you revive this method!
+        ens = set([])
+        for cap in tqdm(captions):
+            if self.lang == "all" or cap["trg_lang"] in self.lang:
+                data.append(cap)
+            if "en" in self.lang or self.lang == "all":
+                if cap['src_lang'] == "en" and cap['caption_tokenized'] not in ens:
+                    ens.add(cap['caption_tokenized'])
+                    data.append({
+                        'trg_lang': 'en',
+                        'translation_tokenized': cap['caption_tokenized'],
+                    })
+        return data # should be `data` if you revive this method!
 
     def __len__(self):
         return len(self.captions)
