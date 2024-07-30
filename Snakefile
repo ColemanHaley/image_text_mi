@@ -1,5 +1,3 @@
-storage:
-    provider="http",
 localrules: all_3600, all_coco
 LANGS = [
   'ar', 'bn', 'cs', 'da', 'de', 'el', 'en', 'es', 'fa',

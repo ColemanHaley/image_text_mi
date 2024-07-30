@@ -14,6 +14,7 @@ import torch.nn.functional as F
 from transformers import (
     AutoProcessor,
     AutoModelForCausalLM,
+    PaliGemmaForConditionalGeneration,
     TrainingArguments,
     Trainer
 )
@@ -59,7 +60,7 @@ def main(cfg):
     )
 
 
-    model = AutoModelForCausalLM.from_pretrained('google/gemma-2b')
+    model = PaliGemmaForConditionalGeneration.from_pretrained('google/paligemma-3b-pt-224').language_model
 
 
     processor = AutoProcessor.from_pretrained(
@@ -80,26 +81,27 @@ def main(cfg):
     # cached_model.cache_prefix(past_kv)
     cached_model = model
 
-    lora_config = LoraConfig(
-        r=8,
-        target_modules=["q_proj", "o_proj", "k_proj", "v_proj", "gate_proj", "up_proj", "down_proj"],
-        task_type="CAUSAL_LM",
-    )
+    # lora_config = LoraConfig(
+    #     r=8,
+    #     target_modules=["q_proj", "o_proj", "k_proj", "v_proj", "gate_proj", "up_proj", "down_proj"],
+    #     task_type="CAUSAL_LM",
+    # )
 
-    model = get_peft_model(cached_model, lora_config)
+    # model = get_peft_model(cached_model, lora_config)
 
     def compute_custom_metric(pred):
         logits = torch.from_numpy(pred.predictions)
         labels = torch.from_numpy(pred.label_ids)
-        loss = F.cross_entropy(logits.view(-1, processor.tokenizer.vocab_size), labels.view(-1))
+        # TODO: why is this not processor.tokenizer.vocab_size???
+        loss = F.cross_entropy(logits.view(-1, 257216), labels.view(-1))
         return {'perplexity': math.exp(loss), 'calculated_loss': loss}
 
     args = TrainingArguments(
-        output_dir="./pali-captioning-lm2/",
+        output_dir="./pali-captioning-lm-nolora/",
         num_train_epochs=1,
-        per_device_train_batch_size=32,
-        per_device_eval_batch_size=8,
+        per_device_train_batch_size=4,
         eval_accumulation_steps=20,
+        per_device_eval_batch_size=4,
         gradient_accumulation_steps=1,
         warmup_steps=2,
         learning_rate=2e-5,
