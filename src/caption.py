@@ -125,7 +125,10 @@ def predict_step(caption_model, text_model, tokenizer, batch, prefix_len):
     txt_probs, txt_labels = get_logprobs(logits_txt, input_ids, mask_paligemma, tokenizer)
     txt_labels = [tokenizer.batch_decode(s) for s in txt_labels]
     cap_labels = [tokenizer.batch_decode(s) for s in cap_labels]
+    # print(txt_labels)
+    # print(cap_labels)
     assert txt_labels == cap_labels
+
 
     index = [len(sent) * [i] for i, sent in enumerate(cap_labels)]
     # print(list(zip(list(flatten(cap_labels)), list(flatten(txt_probs)), list(flatten(cap_probs)))))
@@ -248,12 +251,15 @@ def main(cfg):
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     caption_model.eval().to(device)
     #text_model = caption_model.language_model
-    text_model = AutoModelForCausalLM.from_pretrained('google/gemma-2b')
-    text_model = PeftModel.from_pretrained(text_model, "chaley22/gemma-captioning-lora")
+    text_model = AutoModelForCausalLM.from_pretrained('chaley22/pali-captioning-lm-nolora')
+    # text_model = PeftModel.from_pretrained(text_model, "chaley22/gemma-captioning-lora")
     text_model.eval().to(device)
+    # tokenizer = AutoProcessor.from_pretrained('google/paligemma-3b-pt-224').tokenizer
+    # tokenizer.padding_side = "right"
     tokenizer = AutoTokenizer.from_pretrained('google/gemma-2b', padding_side="right")
     num = tokenizer.add_special_tokens({"eos_token": "\n"})
     processor.tokenizer.padding_side = "right"
+    # tokenizer = processor.tokenizer
 
 
     data, prefix_len = get_data(cfg, processor)

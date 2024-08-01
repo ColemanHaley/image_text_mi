@@ -141,7 +141,7 @@ class COCO35Dataset(Dataset):
             img_id = int(cap["image_id"].split("_")[0])
             path = (
                 self.data_dir
-                / f"val2014" / "val2014"
+                / f"val2014" 
                 / f"COCO_val2014_{img_id:012d}.jpg"
             )
             if cap["trg_lang"] == self.lang:
@@ -160,7 +160,7 @@ class COCO35Dataset(Dataset):
         img_id = int(caption["image_id"].split("_")[0])
         path = (
             self.data_dir
-            / f"val2014" / "val2014"
+            / f"val2014"
             / f"COCO_val2014_{img_id:012d}.jpg"
         )
         #img_id = int(caption["image_id"].split("_")[0])

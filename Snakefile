@@ -103,7 +103,7 @@ rule caption_lang:
     wildcard_constraints:
       lang= "|".join(LANGS)
     shell:
-      "python src/caption.py hydra.job.chdir=False lang={wildcards.lang} out_file=results_{wildcards.lang}.csv"
+      "python src/caption.py hydra.job.chdir=False lang={wildcards.lang} out_file=results_{wildcards.lang}_coco.csv"
 
 rule caption_3600:
   input:
