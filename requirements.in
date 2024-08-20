@@ -10,7 +10,7 @@ tqdm
 transformers>=4.42
 bitsandbytes
 stanza
-snakemake>=8
+snakemake
 opencv-python
 huggingface_hub[cli]
 peft

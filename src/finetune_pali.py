@@ -19,7 +19,7 @@ from transformers import (
     Trainer
 )
 
-from dataset import COCO35TextDataset
+from dataset import COCO35TextDataset, XM3600TextDataset
 from cached_model import PaliGemmaCached
 
 logging.basicConfig(
@@ -54,20 +54,20 @@ def main(cfg):
         "train",
     )
 
-    data_val = COCO35TextDataset(
-        cfg.dataset.path,
-        "dev_sub",
+    data_val = XM3600TextDataset(
+        "data/",
     )
 
 
-    model = PaliGemmaForConditionalGeneration.from_pretrained('google/paligemma-3b-pt-224').language_model
 
 
     processor = AutoProcessor.from_pretrained(
         cfg.model.path,
     )
     processor.tokenizer.padding_side="right"
+    processor.tokenizer.add_bos_token = True
     
+    model = PaliGemmaForConditionalGeneration.from_pretrained('google/paligemma-3b-pt-224').language_model
     # batch = processor(
     #     images=[Image.open('data/coco/avg_train_224.jpg')]*32,
     #     text=["caption"]*32,
@@ -94,12 +94,13 @@ def main(cfg):
         labels = torch.from_numpy(pred.label_ids)
         # TODO: why is this not processor.tokenizer.vocab_size???
         loss = F.cross_entropy(logits.view(-1, 257216), labels.view(-1))
+        print(loss.shape())
         return {'perplexity': math.exp(loss), 'calculated_loss': loss}
 
     args = TrainingArguments(
         output_dir="./pali-captioning-lm-nolora/",
         num_train_epochs=1,
-        per_device_train_batch_size=4,
+        per_device_train_batch_size=8,
         eval_accumulation_steps=20,
         per_device_eval_batch_size=4,
         gradient_accumulation_steps=1,
@@ -112,7 +113,7 @@ def main(cfg):
         save_strategy="steps",
         save_steps=1000,
         eval_strategy="steps",
-        eval_steps=1000,
+        eval_steps=10000,
         eval_on_start=True,
         push_to_hub=True,
         save_total_limit=3,
@@ -123,7 +124,7 @@ def main(cfg):
         model=model,
         train_dataset=data,
         eval_dataset=data_val,
-        compute_metrics=compute_custom_metric,
+        # compute_metrics=compute_custom_metric,
         data_collator=lambda b: prepare_batch(b, processor),
         args=args,
     )

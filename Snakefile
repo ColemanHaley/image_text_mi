@@ -138,3 +138,18 @@ rule pos:
 rule all_pos:
   input:
     expand("outputs/results_{lang}_{dataset}_tagged.csv", lang=LANGS, dataset=['xm', 'coco'])
+
+rule xm_pos:
+  input:
+    expand("outputs/results_{lang}_xm_tagged.csv", lang=LANGS)
+
+rule download_3600:
+  output:
+      "outputs/results_{lang}_xm.csv"
+  shell:
+    """
+    huggingface-cli download chaley22/pali-captioning-lm-nolora --include 'outputs_xm/*/results_{wildcards.lang}_xm.csv' --local-dir outputs/
+    mv outputs/outputs_xm/*/results_{wildcards.lang}_xm.csv outputs/
+    """
+
+ruleorder: download_3600 > caption_3600

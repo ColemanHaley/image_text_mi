@@ -40,6 +40,33 @@ class XM3600Dataset(Dataset):
         return img, caption["caption"], caption['image']
 
 
+class XM3600TextDataset(Dataset):
+    def __init__(self, data_dir, lang='all', transform=None):
+        self.data_dir = Path(data_dir)
+        self.transform = transform
+        self.lang=lang
+        with open(Path(self.data_dir) / "xm3600" / "captions.jsonl", "r") as f:
+            captions = [json.loads(jline) for jline in f.readlines()]
+            # TODO: what if error?
+        self.captions = self._get_split(captions)
+
+    def _get_split(self, captions):
+        data = []
+        for cap in tqdm(captions):
+            for key in cap.keys():
+                if (self.lang == 'all' or key in self.lang) and len(key) == 2:
+                    for c in cap[key]['caption/tokenized']:
+                        data.append({'caption': c, 'lang': key})
+        return data
+
+    def __len__(self):
+        return len(self.captions)
+
+    def __getitem__(self, idx):
+        caption = self.captions[idx]
+        return f'caption {caption["lang"]}\n{caption["caption"]}'
+
+
 class COCO35TextDataset(Dataset):
     def __init__(self, data_dir, split, lang="all", transform=None):
         self.data_dir = Path(data_dir)
