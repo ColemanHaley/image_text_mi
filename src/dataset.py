@@ -128,7 +128,7 @@ class COCO35LMDataset(Dataset):
         #     img_id = int(cap["image_id"].split("_")[0])
         #     path = (
         #         self.data_dir
-        #         / f"val2014" / "val2014"
+        #         / f"val2017" / "val2014"
         #         / f"COCO_val2014_{img_id:012d}.jpg"
         #     )
 
@@ -168,11 +168,20 @@ class COCO35Dataset(Dataset):
             img_id = int(cap["image_id"].split("_")[0])
             path = (
                 self.data_dir
-                / f"val2014" 
-                / f"COCO_val2014_{img_id:012d}.jpg"
+                / "val2017"
+                / f"{img_id:012d}.jpg"
+            )
+            path2 = (
+                self.data_dir
+                / "train2017"
+                / f"{img_id:012d}.jpg"
             )
             if cap["trg_lang"] == self.lang:
                 if path.is_file():
+                    cap['image_path'] = path
+                    data.append(cap)
+                elif path2.is_file():
+                    cap['image_path'] = path2
                     data.append(cap)
                 else:
                     print(f"Image not found: {path}", file=sys.stderr)
@@ -185,13 +194,8 @@ class COCO35Dataset(Dataset):
     def __getitem__(self, idx):
         caption = self.captions[idx]
         img_id = int(caption["image_id"].split("_")[0])
-        path = (
-            self.data_dir
-            / f"val2014"
-            / f"COCO_val2014_{img_id:012d}.jpg"
-        )
         #img_id = int(caption["image_id"].split("_")[0])
-        img = Image.open(path)
+        img = Image.open(caption['image_path'])
         if img.mode != "RGB":
             img = img.convert(mode="RGB")
         if self.transform is not None:
