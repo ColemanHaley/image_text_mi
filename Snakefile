@@ -133,7 +133,7 @@ rule pos:
     file="coco|xm",
     lang="|".join(LANGS)
   shell:
-    "python src/pos_stanza_new.py {wildcards.lang} {input} > {output}"
+    "python src/pos.py {wildcards.lang} {input} > {output}"
 
 rule all_pos:
   input:

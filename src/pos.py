@@ -1,71 +1,131 @@
-import hydra
+import sys
+
+import stanza
 import pandas as pd
-from rich import traceback
 from tqdm import tqdm
-import torch
-from sft import SFT
-from transformers import AutoConfig, AutoModelForTokenClassification, AutoTokenizer
 
-traceback.install()
-labels = [
-    "ADJ",
-    "ADP",
-    "ADV",
-    "AUX",
-    "CCONJ",
-    "DET",
-    "INTJ",
-    "NOUN",
-    "NUM",
-    "PART",
-    "PRON",
-    "PROPN",
-    "PUNCT",
-    "SCONJ",
-    "SYM",
-    "VERB",
-    "X",
-]
-id2label = {i: l for i, l in enumerate(labels)}
+tqdm.pandas()
 
+df = pd.read_csv(sys.argv[2], index_col=0)
 
-@hydra.main(config_path="../config", config_name="config", version_base="1.2")
-def main(cfg):
-    config = AutoConfig.from_pretrained(cfg.pos.model, num_labels=cfg.pos.num_tags)
-    model = AutoModelForTokenClassification.from_pretrained(
-        cfg.pos.model, config=config
-    )
-    tokenizer = AutoTokenizer.from_pretrained(cfg.pos.model)
+df["token"] = df["token"].astype(str)
 
-    df = pd.read_csv("outputs/2024-02-26/16-04-51/results.csv")
+def renumber_and_join_sents(sents, tokens):
+    total = 0
+    sentence_ids = [0]
+    count = 0
+    sent_toks = []
+    sentences = []
+    start_chars = []
+    start_char = 0
+    for i, (sent1, sent2) in enumerate(zip(sents, sents[1:])):
+        if count == 0:
+            start_chars.append(0)
+            start_char += len(tokens[i].strip())
+        else:
+            n_spaces = len(tokens[i]) - len(tokens[i].lstrip())
+            start_chars.append(start_char + n_spaces)
+            start_char += len(tokens[i])
+        count += 1
+        sent_toks.append(tokens[i])
+        if sent1 != sent2:
+            start_char = 0
+            sent = "".join(sent_toks).strip()
+            sentences.extend([sent] * count)
+            total += 1
+            sent_toks = []
+            count = 0
+        sentence_ids.append(total)
+    sent_toks.append(tokens[i+1])
+    n_spaces = len(tokens[i+1]) - len(tokens[i+1].lstrip())
+    start_chars.append(start_char + n_spaces)
+    sent = "".join(sent_toks).strip()
+    sentences.extend([sent]*(count+1))
 
-    lang_sft = SFT(f"cambridgeltl/mbert-lang-sft-{cfg.language}-small")
-    task_sft = SFT(f"cambridgeltl/mbert-task-sft-pos")
-
-    lang_sft.apply(model, with_abs=False)
-    task_sft.apply(model)
-    df["caption"] = df.caption.str.lstrip("Caption the image in English.")
-    captions = df.caption.unique()
-    for caption in tqdm(captions):
-        inputs = tokenizer(caption, return_tensors="pt")
-        with torch.no_grad():
-            logits = model(**inputs).logits
-        predictions = torch.argmax(logits, dim=-1)
-        predicted_token_class = [id2label[t.item()] for t in predictions[0]]
-        pos_sent = {}
-        for word_id, pos in zip(inputs.word_ids(), predicted_token_class):
-            if word_id is not None:
-                if word_id not in pos_sent:
-                    pos_sent[word_id] = []
-                pos_sent[word_id].append(pos)
-        for key in pos_sent:
-            if len(set(pos_sent[key])) > 1:
-                print(caption)
-                print(tokenizer.convert_ids_to_tokens(inputs.input_ids[0]))
-                print(inputs.word_ids())
-                print(predicted_token_class)
-                break
+    return sentence_ids, sentences, start_chars
 
 
-if __name__ == "__main__":
-    main()
+sentence, caption, start_chars = renumber_and_join_sents(df["sentence"], df["token"])
+df['caption'] = caption
+df['sentence'] = sentence
+df['start_char'] = start_chars
+df['POS'] = 'SKIP'
+df['word_stanza'] = '#SKIP#'
+#print(df)
+
+df_sent = df.groupby('sentence').first().reset_index()[['caption', 'sentence']]
+try:
+    nlp = stanza.Pipeline(sys.argv[1], processors="tokenize,mwt,pos")
+except Exception:
+    nlp = stanza.Pipeline(sys.argv[1], processors="tokenize,pos")
+
+documents = df_sent['caption'].tolist()
+in_docs = [stanza.Document([], text=doc) for doc in documents]
+out_docs = nlp(in_docs)
+for i, doc in enumerate(out_docs):
+    cap_info = df[df['sentence'] == i]
+    # print(cap_info)
+    for sent in doc.sentences:
+        blacklist = []
+        for word in sent.words:
+            if isinstance(word.id, list):
+                blacklist.extend(word.id)
+            elif word.id in blacklist:
+                continue
+            else:
+                first_tok = cap_info[cap_info['start_char'] == word.start_char]
+                # print(first_tok)
+                if len(first_tok) > 0:
+                    # print(word.upos)
+                    # print(word)
+                    idx = first_tok.index.astype(int)[0]
+                    first_tok = first_tok.iloc[0]
+                    idxs = [idx]
+
+                    # if word.text == 'Strand':
+                    #     print('STRANDSTRANDSTRAND')
+                    # print(cap_info.loc[idx, 'token'])
+                    # print(cap_info.loc[idx, 'start_char'] + len(cap_info.loc[idx, 'token']))
+                    # print(word.end_char)
+                    # print(idx)
+                    # print(len(cap_info))
+                    while idx < cap_info.index.astype(int)[-1] and cap_info.loc[idx, 'start_char'] + len(cap_info.loc[idx, 'token']) <= word.end_char:
+                        idxs.append(idx)
+                        idx += 1
+                        # print(cap_info.loc[idx, 'token'])
+                        # print(cap_info.loc[idx, 'start_char'] + len(cap_info.loc[idx, 'token']))
+
+                    if cap_info.loc[idxs[-1], 'start_char'] + len(cap_info.loc[idxs[-1], 'token'].strip()) == word.end_char:
+                        df.loc[idxs, 'POS'] = word.upos
+                        df.loc[idxs, 'word_stanza'] = word.text
+                    # else:
+                    #     print('heyho')
+                    #     print(cap_info.loc[idxs])
+                    #     print(word)
+                else:
+                    continue
+
+def sent_idx(sents):
+    count = 0
+    new_col = []
+    for (sent1, sent2) in zip(sents, sents[1:]):
+
+        new_col.append(count)
+        if sent2 != sent1:
+            count = 0
+        else:
+            count += 1
+    new_col.append(count)
+    return new_col
+
+df['sentence_idx'] = sent_idx(df['sentence'])
+
+
+
+
+print(df.to_csv())
+exit()
+                
+
+tagged = [(word, word.upos) for doc in out_docs for sent in doc.sentences for word in sent.words]
+

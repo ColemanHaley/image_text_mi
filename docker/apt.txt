@@ -1,0 +1,6 @@
+git-all
+build-essential
+curl
+zsh
+wget
+unzip
