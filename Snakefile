@@ -96,7 +96,7 @@ rule xm3600:
 
 rule caption_lang:
     input:
-        "data/coco/val2014",
+        "data/coco/val2017",
         "data/coco/annotations/dev_35_caption.jsonl",
     output:
         "outputs/results_{lang}_coco.csv"
