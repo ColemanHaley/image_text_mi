@@ -65,22 +65,19 @@ def predict_step_inner(
     model, prefix_len, corrector, input_ids, attention_mask, pixel_values=None
 ):
     device = model.device
+    params = {}
     if pixel_values is not None:
-        pixel_values = pixel_values.to(device)
-    input_ids = input_ids.to(device)
-    attention_mask = attention_mask.to(device)
+        params["pixel_values"] = pixel_values.to(device)
+    params["input_ids"] = input_ids.to(device)
+    params["attention_mask"] = attention_mask.to(device)
 
     # the conditional probability of the caption given the image
-    logits = model(
-        pixel_values=pixel_values,
-        input_ids=input_ids,
-        attention_mask=attention_mask,
-    ).logits
+    logits = model(**params).logits
 
     probs, labels = get_logprobs(
         logits,
-        input_ids,
-        lambda s: get_mask_paligemma(s, input_ids, attention_mask, prefix_len),
+        params["input_ids"],
+        lambda s: get_mask_paligemma(s, params["input_ids"], params["attention_mask"], prefix_len),
         corrector,
     )
 
@@ -199,6 +196,7 @@ def get_data(cfg, processor, tokenizer):
             num_workers=cfg.num_workers,
             collate_fn=lambda b: prepare_batch(b, processor, tokenizer, prefix=prefix),
         )
+        print(len(data.dataset))
     elif cfg.dataset.name == "test":
         images = [Image.open(cfg.dataset.path)] * 4 + [Image.open("test2.jpg")]
         captions = [

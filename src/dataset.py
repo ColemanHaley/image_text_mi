@@ -126,7 +126,7 @@ class COCO35Dataset(Dataset):
             img_id = int(cap["image_id"].split("_")[0])
             path = self.data_dir / "val2017" / f"{img_id:012d}.jpg"
             path2 = self.data_dir / "train2017" / f"{img_id:012d}.jpg"
-            if cap["trg_lang"] == self.lang:
+            if cap["trg_lang"] == self.lang or self.lang == 'en' and cap['trg_lang'] == 'fr':
                 if path.is_file():
                     cap["image_path"] = path
                     data.append(cap)
@@ -135,7 +135,9 @@ class COCO35Dataset(Dataset):
                     data.append(cap)
                 else:
                     print(f"Image not found: {path}", file=sys.stderr)
-
+            if self.lang == 'en' and cap['trg_lang'] == 'fr':
+                cap['translation_tokenized'] = cap['caption_tokenized']
+                cap['trg_lang'] = 'en'
         return data
 
     def __len__(self):

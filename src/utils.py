@@ -9,13 +9,14 @@ class WhitespaceCorrector:
         self.whitespace_tokens = [
             token_id
             for token_id in range(tokenizer.vocab_size)
-            if tokenizer.decode(token_id).leftstrip() != tokenizer.decode(token_id)
+            if tokenizer.decode(token_id).lstrip() != tokenizer.decode(token_id)
         ]
 
     def correct_for_spaces(self, token_id, logprobs):
         correction = 0
         if token_id in self.whitespace_tokens:
-            correction = torch.logsumexp(logprobs[self.whitespace_tokens])
+
+            correction = torch.logsumexp(logprobs[self.whitespace_tokens], 0, False)
         return correction
 
 
