@@ -30,7 +30,7 @@ class XM3600Dataset(Dataset):
     def __getitem__(self, idx):
         caption = self.captions[idx]
         path = self.data_dir / "xm3600" / "images" / f"{caption['image']}.jpg"
-        img = Image.open(path)
+        img = Image.load(path)
         if img.mode != "RGB":
             img = img.convert(mode="RGB")
         if self.transform is not None:
@@ -147,7 +147,7 @@ class COCO35Dataset(Dataset):
         caption = self.captions[idx]
         img_id = int(caption["image_id"].split("_")[0])
         # img_id = int(caption["image_id"].split("_")[0])
-        img = Image.open(caption["image_path"])
+        img = Image.load(caption["image_path"])
         if img.mode != "RGB":
             img = img.convert(mode="RGB")
         if self.transform is not None:
@@ -189,7 +189,7 @@ class COCODataset(Dataset):
             / f"{self.split}2014"
             / f"COCO_{self.split}2014_{img_id:012d}.jpg"
         )
-        img = Image.open(path)
+        img = Image.load(path)
         if img.mode != "RGB":
             img = img.convert(mode="RGB")
         if self.transform is not None:
