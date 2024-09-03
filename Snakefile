@@ -1,10 +1,10 @@
-localrules: all_3600, all_coco
 LANGS = [
   'ar', 'bn', 'cs', 'da', 'de', 'el', 'en', 'es', 'fa',
   'fi', 'fil', 'fr', 'he', 'hi', 'hr', 'hu', 'id', 'it',
   'ja', 'ko', 'mi', 'nl', 'no', 'pl', 'pt', 'ro', 'ru',
   'sv', 'sw', 'te', 'th', 'tr', 'uk', 'vi', 'zh'
 ] # Drop quz b/c of COCO. 
+localrules: xm3600_images, xm3600_annotations, coco_images, coco_imgz, coco_35_annotations
 rule coco_images:
     input:
       "data/coco/{split}.zip"
@@ -105,6 +105,20 @@ rule caption_lang:
     shell:
       "python src/caption.py hydra.job.chdir=False lang={wildcards.lang} out_file=results_{wildcards.lang}_coco.csv"
 
+rule caption_gemma:
+    input:
+        "data/coco/val2017",
+        "data/xm3600/images",
+        "data/xm3600/captions.jsonl",
+        "data/coco/train2017",
+        "data/coco/annotations/dev_35_caption.jsonl",
+    output:
+        "outputs/results_{lang}_{dataset}.csv"
+    wildcard_constraints:
+      lang= "|".join(LANGS)
+    shell:
+      "python src/caption.py hydra.job.chdir=False lang={wildcards.lang} out_file=results_{wildcards.lang}_{wildcards.dataset}_gemma.csv"
+
 rule caption_3600:
   input:
     f"data/xm3600/images",
@@ -119,6 +133,10 @@ rule caption_3600:
 rule all_3600:
   input:
     expand("outputs/results_{lang}_xm.csv", lang=LANGS)
+
+rule all_gemma:
+  input:
+    expand("outputs/results_{lang}_{dataset}_gemma.csv", lang=LANGS, dataset=['xm', 'coco'])
 
 rule all_coco:
   input:

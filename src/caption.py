@@ -225,7 +225,7 @@ def main(cfg):
     caption_model.eval().to(device)
 
     text_model = AutoModelForCausalLM.from_pretrained(
-        "chaley22/pali-captioning-lm-nolora"
+        cfg.text_model
     )
     text_model.eval().to(device)
 

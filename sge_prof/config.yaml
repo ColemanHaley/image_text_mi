@@ -1,0 +1,7 @@
+executor: cluster-generic
+cluster-generic-submit-cmd: 'qsub -l h_vmem=80G -q gpu -pe gpu-a100 1 -l rl9'
+cluster-generic-cancel-cmd: 'qdel'
+# use-envmodules: "True"
+# envmodules: "anaconda/2024.02"
+# use-conda: "True"
+# conda: "grounded"
