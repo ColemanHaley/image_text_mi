@@ -107,17 +107,18 @@ rule caption_lang:
 
 rule caption_gemma:
     input:
-        "data/coco/val2017",
-        "data/xm3600/images",
-        "data/xm3600/captions.jsonl",
-        "data/coco/train2017",
-        "data/coco/annotations/dev_35_caption.jsonl",
+      # "data/coco/val2017",
+      #  "data/xm3600/images",
+      #  "data/xm3600/captions.jsonl",
+      #  "data/coco/train2017",
+      #  "data/coco/annotations/dev_35_caption.jsonl",
     output:
         "outputs/results_{lang}_{dataset}.csv"
     wildcard_constraints:
-      lang= "|".join(LANGS)
+      lang="|".join(LANGS),
+      dataset="xm_gemma|coco_gemma"
     shell:
-      "python src/caption.py hydra.job.chdir=False lang={wildcards.lang} out_file=results_{wildcards.lang}_{wildcards.dataset}_gemma.csv"
+      "python src/caption.py hydra.job.chdir=False lang={wildcards.lang} txt_model='google/gemma-2b' out_file=results_{wildcards.lang}_{wildcards.dataset}.csv"
 
 rule caption_3600:
   input:
@@ -148,7 +149,7 @@ rule pos:
   output:
     "outputs/results_{lang}_{file}_tagged.csv"
   wildcard_constraints:
-    file="coco|xm",
+    file="coco|xm|coco_gemma|xm_gemma",
     lang="|".join(LANGS)
   shell:
     "python src/pos.py {wildcards.lang} {input} > {output}"

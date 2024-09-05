@@ -225,7 +225,7 @@ def main(cfg):
     caption_model.eval().to(device)
 
     text_model = AutoModelForCausalLM.from_pretrained(
-        cfg.text_model
+        cfg.txt_model
     )
     text_model.eval().to(device)
 

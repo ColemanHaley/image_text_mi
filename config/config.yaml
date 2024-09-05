@@ -3,7 +3,8 @@ defaults:
   - _self_
   - model: paligemma
   - pos: mbert
-batch_size: 8
+batch_size: 32
+txt_model: chaley22/pali-captioning-lm-nolora
 out_file: results_de.csv
 num_workers: 1
 lang: de
