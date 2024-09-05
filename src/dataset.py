@@ -2,6 +2,7 @@ import json
 import sys
 from pathlib import Path
 
+from iso639 import Lang
 from PIL import Image
 from torch.utils.data import Dataset
 from tqdm.rich import tqdm
@@ -30,7 +31,7 @@ class XM3600Dataset(Dataset):
     def __getitem__(self, idx):
         caption = self.captions[idx]
         path = self.data_dir / "xm3600" / "images" / f"{caption['image']}.jpg"
-        img = Image.load(path)
+        img = Image.open(path)
         if img.mode != "RGB":
             img = img.convert(mode="RGB")
         if self.transform is not None:
@@ -126,7 +127,11 @@ class COCO35Dataset(Dataset):
             img_id = int(cap["image_id"].split("_")[0])
             path = self.data_dir / "val2017" / f"{img_id:012d}.jpg"
             path2 = self.data_dir / "train2017" / f"{img_id:012d}.jpg"
-            if cap["trg_lang"] == self.lang or self.lang == 'en' and cap['trg_lang'] == 'fr':
+            if (
+                cap["trg_lang"] == self.lang
+                or self.lang == "en"
+                and cap["trg_lang"] == "fr"
+            ):
                 if path.is_file():
                     cap["image_path"] = path
                     data.append(cap)
@@ -135,9 +140,9 @@ class COCO35Dataset(Dataset):
                     data.append(cap)
                 else:
                     print(f"Image not found: {path}", file=sys.stderr)
-            if self.lang == 'en' and cap['trg_lang'] == 'fr':
-                cap['translation_tokenized'] = cap['caption_tokenized']
-                cap['trg_lang'] = 'en'
+            if self.lang == "en" and cap["trg_lang"] == "fr":
+                cap["translation_tokenized"] = cap["caption_tokenized"]
+                cap["trg_lang"] = "en"
         return data
 
     def __len__(self):
@@ -147,12 +152,40 @@ class COCO35Dataset(Dataset):
         caption = self.captions[idx]
         img_id = int(caption["image_id"].split("_")[0])
         # img_id = int(caption["image_id"].split("_")[0])
-        img = Image.load(caption["image_path"])
+        img = Image.open(caption["image_path"])
         if img.mode != "RGB":
             img = img.convert(mode="RGB")
         if self.transform is not None:
             img = self.transform(images=img)
         return img, caption["translation_tokenized"], img_id
+
+
+class Multi30kDataset(Dataset):
+    def __init__(self, data_dir, split, lang, transform=None):
+        self.data_dir = Path(data_dir)
+        self.split = split
+        assert self.split in ["train", "val"]
+        self.transform = transform
+        self.lang = lang
+        with open(self.data_dir / split / f"{Lang(self.lang).name}.txt", "r") as f:
+            captions = f.readlines()
+        with open(self.data_dir / split / "IDs.txt") as f:
+            ids = f.read().splitlines()
+        self.captions = [
+            {"caption": cap, "image_id": id} for cap, id in zip(captions, ids)
+        ]
+
+    def __len__(self):
+        return len(self.captions)
+
+    def __getitem__(self, idx):
+        caption = self.captions[idx]
+        img = Image.open(self.data_dir / "images" / caption["image_id"])
+        if img.mode != "RGB":
+            img = img.convert(mode="RGB")
+        if self.transform is not None:
+            img = self.transform(images=img)
+        return img, caption["caption"], caption["image_id"]
 
 
 class COCODataset(Dataset):
@@ -189,7 +222,7 @@ class COCODataset(Dataset):
             / f"{self.split}2014"
             / f"COCO_{self.split}2014_{img_id:012d}.jpg"
         )
-        img = Image.load(path)
+        img = Image.open(path)
         if img.mode != "RGB":
             img = img.convert(mode="RGB")
         if self.transform is not None:

@@ -2,7 +2,6 @@ import logging
 import os
 
 import hydra
-import numpy as np
 import pandas as pd
 import torch
 from pandas.core.common import flatten
@@ -17,9 +16,10 @@ from transformers import (
     AutoProcessor,
     AutoTokenizer,
     AutoModelForCausalLM,
+    PaliGemmaProcessor,
 )
-from dataset import COCODataset, COCO35Dataset, XM3600Dataset
-from utils import WhitespaceCorrector
+from dataset import Multi30kDataset, COCO35Dataset, XM3600Dataset
+from utils import WhitespaceCorrector, renumber_and_join_sents
 
 logging.basicConfig(
     handlers=[RichHandler(rich_tracebacks=True)],
@@ -61,15 +61,13 @@ def get_logprobs(logits, input_ids, mask_fn, corrector):
     return results, tokens
 
 
-def predict_step_inner(
-    model, prefix_len, corrector, input_ids, attention_mask, pixel_values=None
-):
+def predict_step(model, batch, tokenizer, prefix_len, corrector):
     device = model.device
     params = {}
-    if pixel_values is not None:
-        params["pixel_values"] = pixel_values.to(device)
-    params["input_ids"] = input_ids.to(device)
-    params["attention_mask"] = attention_mask.to(device)
+    if batch["pixel_values"] is not None:
+        params["pixel_values"] = batch["pixel_values"].to(device)
+    params["input_ids"] = batch["input_ids"].to(device)
+    params["attention_mask"] = batch["attention_mask"].to(device)
 
     # the conditional probability of the caption given the image
     logits = model(**params).logits
@@ -77,92 +75,67 @@ def predict_step_inner(
     probs, labels = get_logprobs(
         logits,
         params["input_ids"],
-        lambda s: get_mask_paligemma(s, params["input_ids"], params["attention_mask"], prefix_len),
+        lambda s: get_mask_paligemma(
+            s, params["input_ids"], params["attention_mask"], prefix_len
+        ),
         corrector,
     )
 
-    return probs, labels
-
-
-def predict_step(caption_model, text_model, tokenizer, batch, prefix_len, corrector):
-    tokenizer, tokenizer_txt = tokenizer
-    corrector, corrector_txt = corrector
-    cap_probs, cap_labels = predict_step_inner(
-        caption_model,
-        prefix_len,
-        corrector,
-        batch["input_ids"],
-        batch["attention_mask"],
-        batch["pixel_values"],
-    )
-
-    txt_probs, txt_labels = predict_step_inner(
-        text_model,
-        prefix_len,
-        corrector_txt,
-        batch["inputs_txt"],
-        batch["attention_mask_txt"],
-    )
-
-    txt_labels = [tokenizer_txt.batch_decode(s) for s in txt_labels]
-    cap_labels = [tokenizer.batch_decode(s) for s in cap_labels]
-    assert txt_labels == cap_labels
-
-    index = [len(sent) * [i] for i, sent in enumerate(cap_labels)]
+    labels = [tokenizer.batch_decode(s) for s in labels]
+    index = [len(sent) * [i] for i, sent in enumerate(labels)]
 
     data = {
-        "token": list(flatten(cap_labels)),
-        "cap_xent": list(flatten(cap_probs)),
-        "txt_xent": list(flatten(txt_probs)),
-        "mutual_information": np.array(txt_probs) - np.array(cap_probs),
+        "token": list(flatten(labels)),
+        "surprisal": list(flatten(probs)),
         "sentence": list(flatten(index)),
     }
     return data
 
 
-def prepare_batch(batch, processor, tokenizer, prefix="Caption the image in English."):
+def prepare_batch(batch, processor, prefix="Caption the image in English."):
     images, captions, image_paths = zip(*batch)
     captions = [f"{prefix}{caption}" for caption in captions]
-    batch = processor(
-        images=images,
-        text=captions,
-        padding="longest",
-        truncation=True,
-        return_tensors="pt",
-    )
-    captions = [caption + "\n" for caption in captions]
-    txt_batch = tokenizer(
-        captions, return_tensors="pt", padding="longest", add_special_tokens=True
-    )
-    batch.update(
-        {
-            "inputs_txt": txt_batch["input_ids"],
-            "attention_mask_txt": txt_batch["attention_mask"],
-        }
-    )
+
+    if isinstance(processor, PaliGemmaProcessor):
+        batch = processor(
+            images=images,
+            text=captions,
+            padding="longest",
+            truncation=True,
+            return_tensors="pt",
+        )
+    else:
+        captions = [caption + "\n" for caption in captions]
+        batch = processor(
+            captions, return_tensors="pt", padding="longest", add_special_tokens=True
+        )
     batch.update({"image_paths": image_paths, "captions": captions})
     return batch
 
 
 def load_model(cfg):
     kwargs = {}
-    if cfg.name in ["pali-gemma"]:  # "mblip-bloomz", "mblip-mt0"]:
-        if cfg.quant:
-            kwargs.update(
-                {
-                    "load_in_4bit": True,
-                    "bnb_4bit_quant_type": "nf4",
-                    "bnb_4bit_use_double_quant": False,
-                    "bnb_4bit_compute_dtype": torch.bfloat16,
-                }
-            )
-
+    if cfg.quant:
+        kwargs.update(
+            {
+                "load_in_4bit": True,
+                "bnb_4bit_quant_type": "nf4",
+                "bnb_4bit_use_double_quant": False,
+                "bnb_4bit_compute_dtype": torch.bfloat16,
+            }
+        )
+    if cfg.name in ["paligemma"]:  # "mblip-bloomz", "mblip-mt0"]:
         model = PaliGemmaForConditionalGeneration.from_pretrained(cfg.path, **kwargs)
 
         processor = AutoProcessor.from_pretrained(
             cfg.path,
             padding_side="right",
         )
+        processor.tokenizer.padding_side = "right"
+    elif cfg.name in ["gemma-2b", "ft-pali"]:
+        model = AutoModelForCausalLM.from_pretrained(cfg.path)
+        processor = AutoTokenizer.from_pretrained(cfg.tok_path, padding_side="right")
+        processor.add_special_tokens({"eos_token": "\n"})
     else:
         raise ValueError(f"Model {cfg.name} not implemented.")
     return model, processor
@@ -171,33 +144,9 @@ def load_model(cfg):
 def get_data(cfg, processor, tokenizer):
     # compute prefix length
     prefix = f"caption {cfg.lang}\n"
-    prefix_len = len(processor.tokenizer(prefix)["input_ids"])
+    prefix_len = len(tokenizer(prefix)["input_ids"])
 
-    if cfg.dataset.name == "xm3600":
-        data = DataLoader(
-            XM3600Dataset(
-                cfg.dataset.path,
-                cfg.lang,
-            ),
-            batch_size=cfg.batch_size,
-            shuffle=False,
-            num_workers=cfg.num_workers,
-            collate_fn=lambda b: prepare_batch(b, processor, tokenizer, prefix=prefix),
-        )
-    elif cfg.dataset.name == "coco35":
-        data = DataLoader(
-            COCO35Dataset(
-                cfg.dataset.path,
-                cfg.dataset.split,
-                cfg.lang,
-            ),
-            batch_size=cfg.batch_size,
-            shuffle=False,
-            num_workers=cfg.num_workers,
-            collate_fn=lambda b: prepare_batch(b, processor, tokenizer, prefix=prefix),
-        )
-        print(len(data.dataset))
-    elif cfg.dataset.name == "test":
+    if cfg.dataset.name == "test":
         images = [Image.open(cfg.dataset.path)] * 4 + [Image.open("test2.jpg")]
         captions = [
             "A test sentence.",
@@ -210,10 +159,30 @@ def get_data(cfg, processor, tokenizer):
         ]
         image_paths = [cfg.dataset.path] * 4 + ["test2.jpg"]
         data = [
-            prepare_batch(zip(*(images, captions, image_paths)), processor, tokenizer)
+            prepare_batch(
+                zip(*(images, captions, image_paths)), processor, prefix=prefix
+            )
         ]
+        return data, prefix_len
+    elif cfg.dataset.name == "xm3600":
+        dataset_class = XM3600Dataset
+    elif cfg.dataset.name == "coco35":
+        dataset_class = COCO35Dataset
+    elif cfg.dataset.name == "multi30k":
+        dataset_class = Multi30kDataset
     else:
         raise ValueError(f"Dataset {cfg.dataset.name} not implemented.")
+    data = DataLoader(
+        dataset_class(
+            cfg.dataset.path,
+            cfg.dataset.split,
+            cfg.lang,
+        ),
+        batch_size=cfg.batch_size,
+        shuffle=False,
+        num_workers=cfg.num_workers,
+        collate_fn=lambda b: prepare_batch(b, processor, prefix=prefix),
+    )
     return data, prefix_len
 
 
@@ -221,34 +190,26 @@ def get_data(cfg, processor, tokenizer):
 def main(cfg):
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-    caption_model, processor = load_model(cfg.model)
-    caption_model.eval().to(device)
+    model, processor = load_model(cfg.model)
+    model.eval().to(device)
 
-    text_model = AutoModelForCausalLM.from_pretrained(
-        cfg.txt_model
-    )
-    text_model.eval().to(device)
-
-    tokenizer = AutoTokenizer.from_pretrained("google/gemma-2b", padding_side="right")
-    tokenizer.add_special_tokens({"eos_token": "\n"})
-    processor.tokenizer.padding_side = "right"
+    if hasattr(processor, "tokenizer"):
+        tokenizer = processor.tokenizer
+    else:
+        tokenizer = processor
 
     data, prefix_len = get_data(cfg, processor, tokenizer)
+    corrector = WhitespaceCorrector(tokenizer)
 
     full_results = []
-    correctors = (
-        WhitespaceCorrector(processor.tokenizer),
-        WhitespaceCorrector(tokenizer),
-    )
     for batch in tqdm(data):
         with torch.no_grad():
             results = predict_step(
-                caption_model=caption_model,
-                tokenizer=(processor.tokenizer, tokenizer),
-                text_model=text_model,
+                model=model,
+                tokenizer=tokenizer,
                 batch=batch,
                 prefix_len=prefix_len,
-                corrector=correctors,
+                corrector=corrector,
             )
         results.update(
             {
@@ -258,10 +219,24 @@ def main(cfg):
         )
         full_results.append(pd.DataFrame(results))
 
+    full_results = pd.concat(full_results, ignore_index=True)
+
+    full_results["token"] = full_results["token"].astype(str)
+    sentence, caption, start_chars = renumber_and_join_sents(
+        full_results["sentence"], full_results["token"]
+    )
+    full_results["caption"] = caption
+    full_results["sentence"] = sentence
+    full_results["start_char"] = start_chars
+    full_results[cfg.model.name + "_surprisal"] = full_results["surprisal"]
+    full_results.drop(columns=["surprisal"], inplace=True)
+
     hydra_output = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
     with open(f"{hydra_output}/{cfg.out_file}", "w") as f:
-        pd.concat(full_results, ignore_index=True).to_csv(f)
-    os.symlink(f"{hydra_output}/{cfg.out_file}", f"{hydra_output}/../../{cfg.out_file}")
+        full_results.to_csv(f, index=False)
+    os.symlink(
+        f"{hydra_output}/{cfg.out_file}", f"{hydra_output}/../../../{cfg.out_file}"
+    )
 
 
 if __name__ == "__main__":

@@ -1,0 +1,3 @@
+name: multi30k
+path: data/multi30k/
+split: val

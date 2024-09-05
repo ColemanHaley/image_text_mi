@@ -1,0 +1,3 @@
+quant: false
+name: gemma-2b
+path: "googla/gemma-2b"
