@@ -69,10 +69,10 @@ def renumber_and_join_sents(sents, tokens):
 
     # handle the last token
     sent_toks.append(tokens[i + 1])
-    # start_chars.append(start_char + len(tokens[i + 1]) - len(tokens[i + 1].lstrip()))
+    start_chars.append(start_char + len(tokens[i + 1]) - len(tokens[i + 1].lstrip()))
     sentences.extend(["".join(sent_toks).strip()] * (count + 1))
 
-    return sentence_ids, sentences, start_chars
+    return sentence_ids, sentences, start_chars[1:]
 
 
 # def fix_tokens(toks):

@@ -1,4 +1,5 @@
 import argparse
+import sys
 import pandas as pd
 import itertools
 import matplotlib.pyplot as plt
@@ -116,7 +117,11 @@ def main():
     word_dfs = {}
     print("hi")
     for l in args.langs:
-        df = pd.read_csv(f"outputs/results_{l}_{args.dataset}_tagged.csv")
+        try:
+            df = pd.read_csv(f"outputs/results_{l}_{args.dataset}_tagged.csv")
+        except FileNotFoundError:
+            print(f"Error, {l} results not found for {args.dataset}", file=sys.stderr)
+            continue
         grps = (
             df.word_stanza != df.word_stanza.shift()
         ).cumsum()  # TODO: fix for repeated words

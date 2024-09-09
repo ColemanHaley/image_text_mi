@@ -1,3 +1,4 @@
 quant: false
 name: ft-pali
 path: chaley22/pali-captioning-lm-nolora
+tok_path: "google/gemma-2b"

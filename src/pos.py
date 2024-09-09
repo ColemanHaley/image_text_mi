@@ -6,9 +6,47 @@ from tqdm import tqdm
 
 tqdm.pandas()
 
-df = pd.read_csv(sys.argv[2], index_col=0)
+df = pd.read_csv(sys.argv[2])
 
 df["token"] = df["token"].astype(str)
+
+
+def renumber_and_join_sents(sents, tokens):
+    total = 0
+    sentence_ids = [0]
+    count = 0
+    sent_toks = []
+    sentences = []
+    start_chars = []
+    start_char = 0
+    for i, (sent1, sent2) in enumerate(zip(sents, sents[1:])):
+        if count == 0:
+            start_chars.append(0)
+            start_char += len(tokens[i].strip())
+        else:
+            n_spaces = len(tokens[i]) - len(tokens[i].lstrip())
+            start_chars.append(start_char + n_spaces)
+            start_char += len(tokens[i])
+        count += 1
+        sent_toks.append(tokens[i])
+        if sent1 != sent2:
+            start_char = 0
+            sent = "".join(sent_toks).strip()
+            sentences.extend([sent] * count)
+            total += 1
+            sent_toks = []
+            count = 0
+        sentence_ids.append(total)
+    sent_toks.append(tokens[i + 1])
+    n_spaces = len(tokens[i + 1]) - len(tokens[i + 1].lstrip())
+    start_chars.append(start_char + n_spaces)
+    sent = "".join(sent_toks).strip()
+    sentences.extend([sent] * (count + 1))
+
+    return sentence_ids, sentences, start_chars
+
+
+sentence, caption, start_chars = renumber_and_join_sents(df["sentence"], df["token"])
 df["caption"] = caption
 df["sentence"] = sentence
 df["start_char"] = start_chars

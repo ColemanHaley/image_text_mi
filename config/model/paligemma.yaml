@@ -1,3 +1,4 @@
 name: paligemma
 path: "google/paligemma-3b-ft-coco35l-224" 
+tok_path: "google/paligemma-3b-ft-coco35l-224"
 quant: false

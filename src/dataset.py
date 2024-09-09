@@ -167,8 +167,16 @@ class Multi30kDataset(Dataset):
         assert self.split in ["train", "val"]
         self.transform = transform
         self.lang = lang
-        with open(self.data_dir / split / f"{Lang(self.lang).name}.txt", "r") as f:
-            captions = f.readlines()
+        try:
+            with open(self.data_dir / split / f"{Lang(self.lang).name}.txt", "r") as f:
+                captions = f.readlines()
+        except UnicodeDecodeError:
+            with open(
+                self.data_dir / split / f"{Lang(self.lang).name}.txt",
+                "r",
+                encoding="cp1252",
+            ) as f:
+                captions = f.readlines()
         with open(self.data_dir / split / "IDs.txt") as f:
             ids = f.read().splitlines()
         self.captions = [

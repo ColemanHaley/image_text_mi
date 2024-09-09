@@ -1,5 +1,6 @@
 import logging
 import os
+from pathlib import Path
 
 import hydra
 import pandas as pd
@@ -64,7 +65,7 @@ def get_logprobs(logits, input_ids, mask_fn, corrector):
 def predict_step(model, batch, tokenizer, prefix_len, corrector):
     device = model.device
     params = {}
-    if batch["pixel_values"] is not None:
+    if "pixel_values" in batch:
         params["pixel_values"] = batch["pixel_values"].to(device)
     params["input_ids"] = batch["input_ids"].to(device)
     params["attention_mask"] = batch["attention_mask"].to(device)
@@ -232,10 +233,11 @@ def main(cfg):
     full_results.drop(columns=["surprisal"], inplace=True)
 
     hydra_output = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
-    with open(f"{hydra_output}/{cfg.out_file}", "w") as f:
+    out_file = Path(cfg.out_file)
+    with open(f"{hydra_output}/{out_file.name}", "w") as f:
         full_results.to_csv(f, index=False)
     os.symlink(
-        f"{hydra_output}/{cfg.out_file}", f"{hydra_output}/../../../{cfg.out_file}"
+        f"{hydra_output}/{out_file.name}", f"{hydra_output}/../../../{cfg.out_file}"
     )
 
 

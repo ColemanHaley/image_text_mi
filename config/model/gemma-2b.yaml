@@ -1,3 +1,4 @@
 quant: false
 name: gemma-2b
-path: "googla/gemma-2b"
+path: "google/gemma-2b"
+tok_path: "google/gemma-2b"
