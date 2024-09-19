@@ -13,11 +13,12 @@ class WhitespaceCorrector:
                 if tokenizer.decode(token_id).lstrip() != tokenizer.decode(token_id)
             ]
         )
+        self.whitespace_tensor = torch.tensor(list(self.whitespace_tokens))
 
     def correct_for_spaces(self, token_id, logprobs):
         correction = 0
         if token_id in self.whitespace_tokens:
-            correction = torch.logsumexp(logprobs[self.whitespace_tokens], 0, False)
+            correction = torch.logsumexp(logprobs[self.whitespace_tensor], 0, False)
         return correction
 
 

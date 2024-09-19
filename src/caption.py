@@ -2,9 +2,11 @@ import logging
 import os
 from pathlib import Path
 
+import pdb
 import hydra
 import pandas as pd
 import torch
+import torch.nn.functional as F
 from pandas.core.common import flatten
 from PIL import Image
 from rich import traceback
@@ -33,11 +35,14 @@ IMAGE_TOKEN_ID = 257152
 
 def get_mask_paligemma(sentence, input_ids, attention_mask, prefix_len):
     img = (input_ids[sentence] == IMAGE_TOKEN_ID).sum().item()
+    if img > 0:
+        img += 1
     pad = abs(attention_mask[sentence].sum().item() - input_ids.size(1))
 
     mask = torch.zeros(input_ids.size(1), dtype=torch.bool)
-    mask[img + (prefix_len + 1) :] = True
-    mask[-pad:] = False
+    mask[img + (prefix_len) :] = True
+    if pad > 0:
+        mask[-pad:] = False
     return mask
 
 
@@ -47,16 +52,29 @@ def get_logprobs(logits, input_ids, mask_fn, corrector):
     tokens = []
     device = logits.device
     for i in range(batch_size):
+        # pdb.set_trace()
         mask = mask_fn(i).to(device)
+        # print(mask)
+        # print(input_ids[i])
         labels = input_ids[i][mask]
         tokens.append(labels)
-        logprobs = torch.nn.functional.log_softmax(logits[i][:-1][mask[1:]], dim=-1)
+        remember_me = mask[0]
+        mask = torch.roll(mask,-1)
+        mask[0] = remember_me
+
+        logprobs = torch.nn.functional.log_softmax(logits[i][mask], dim=-1)
         xent = torch.gather(logprobs, -1, labels.unsqueeze(-1)).squeeze()
+        # pdb.set_trace()
         for j, token_id in enumerate(labels):
-            correction = corrector.correct_for_spaces(token_id, logprobs[j])
+            correction = corrector.correct_for_spaces(token_id.item(), logprobs[j])
+            # if correction != 0:
+            #     print('hi!!')
             if j > 0:
                 xent[j - 1] -= correction
-            xent[j] += correction
+            if len(xent) == 1:
+                xent += correction
+            else:
+                xent[j] += correction
 
         results.extend((-xent.cpu()).tolist())
     return results, tokens
@@ -67,6 +85,8 @@ def predict_step(model, batch, tokenizer, prefix_len, corrector):
     params = {}
     if "pixel_values" in batch:
         params["pixel_values"] = batch["pixel_values"].to(device)
+        params["token_type_ids"] = batch["token_type_ids"].to(device)
+        params["labels"] = batch["labels"].to(device)
     params["input_ids"] = batch["input_ids"].to(device)
     params["attention_mask"] = batch["attention_mask"].to(device)
 
@@ -95,18 +115,20 @@ def predict_step(model, batch, tokenizer, prefix_len, corrector):
 
 def prepare_batch(batch, processor, prefix="Caption the image in English."):
     images, captions, image_paths = zip(*batch)
-    captions = [f"{prefix}{caption}" for caption in captions]
 
     if isinstance(processor, PaliGemmaProcessor):
         batch = processor(
             images=images,
-            text=captions,
+            text=[prefix] * len(captions),
+            suffix=captions,
             padding="longest",
             truncation=True,
             return_tensors="pt",
         )
+
+        captions = [f"{prefix}{caption}" for caption in captions]
     else:
-        captions = [caption + "\n" for caption in captions]
+        captions = [f"{prefix}{caption}" for caption in captions]
         batch = processor(
             captions, return_tensors="pt", padding="longest", add_special_tokens=True
         )
@@ -136,7 +158,7 @@ def load_model(cfg):
     elif cfg.name in ["gemma-2b", "ft-pali"]:
         model = AutoModelForCausalLM.from_pretrained(cfg.path)
         processor = AutoTokenizer.from_pretrained(cfg.tok_path, padding_side="right")
-        processor.add_special_tokens({"eos_token": "\n"})
+        # processor.add_special_tokens({"eos_token": "\n"})
     else:
         raise ValueError(f"Model {cfg.name} not implemented.")
     return model, processor
@@ -148,8 +170,10 @@ def get_data(cfg, processor, tokenizer):
     prefix_len = len(tokenizer(prefix)["input_ids"])
 
     if cfg.dataset.name == "test":
-        images = [Image.open(cfg.dataset.path)] * 4 + [Image.open("test2.jpg")]
+        images = [Image.open("data/multi30k/images/1001465944.jpg")]
+        images += [Image.open(cfg.dataset.path)] * 4 + [Image.open("test2.jpg")]
         captions = [
+            "A woman with a large purse is walking by a gate.",
             "A test sentence.",
             "A bicycle replica with a clock as the front wheel.",
             "A cat is laying on top of a dryer.",
@@ -158,7 +182,9 @@ def get_data(cfg, processor, tokenizer):
             "Two cats and a dog.",
             "the the the the the." "A bicycle replica with a clock as the front wheel.",
         ]
-        image_paths = [cfg.dataset.path] * 4 + ["test2.jpg"]
+        image_paths = (
+            ["data/multi30k/1001465944.jpg"] + [cfg.dataset.path] * 4 + ["test2.jpg"]
+        )
         data = [
             prepare_batch(
                 zip(*(images, captions, image_paths)), processor, prefix=prefix

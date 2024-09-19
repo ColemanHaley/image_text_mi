@@ -23,8 +23,9 @@ rule blank_coco35:
 
 
 rule caption:
-  #input:
-      #    "data/{dataset}/complete"
+    input:
+       "data/{dataset}/complete",
+       "src/caption.py"
     output:
         "outputs/{dataset}/{model}/results_{lang}.csv"
     wildcard_constraints:
@@ -75,7 +76,8 @@ rule all_coco:
 
 rule pos:
   input:
-    "outputs/{dataset}/paligemma/results_{lang}.csv"
+    "outputs/{dataset}/paligemma/results_{lang}.csv",
+    "src/caption.py"
   output:
     "outputs/{dataset}/pos/results_{lang}.csv"
   wildcard_constraints:
@@ -87,33 +89,33 @@ rule pos:
 rule combine_multi30k:
   input:
     "outputs/multi30k/pos/results_{lang}.csv",
-    "outputs/multi30k/ft-pali/results_{lang}.csv"
+    "outputs/multi30k/ft-pali/results_{lang}.csv",
+    "src/combine.py"
   output:
     "outputs/results_{lang}_multi30k_tagged.csv"
-  run:
-    import pandas as pd
-    df_cap = pd.read_csv(f"outputs/multi30k/pos/results_{wildcards.lang}.csv")
-    df_txt = pd.read_csv(f"outputs/multi30k/ft-pali/results_{wildcards.lang}.csv")
-    print(df_txt.columns)
-
-    df_cap["ft-pali_surprisal"] = df_txt["ft-pali_surprisal"]
-    df_cap["mutual_information"] =   df_cap["ft-pali_surprisal"] - df_cap["paligemma_surprisal"]
-    df_cap.to_csv(f"outputs/results_{wildcards.lang}_multi30k_tagged.csv", index=False)
+  shell:
+    """
+    python src/combine.py \
+    --lang {wildcards.lang} \
+    --model ft-pali \
+    --output outputs/results_{wildcards.lang}_multi30k_tagged.csv 
+    """
 
 rule combine_multi30k_gemma:
   input:
     "outputs/multi30k/pos/results_{lang}.csv",
-    "outputs/multi30k/gemma-2b/results_{lang}.csv"
+    "outputs/multi30k/gemma-2b/results_{lang}.csv",
+    "src/combine.py"
   output:
     "outputs/results_{lang}_multi30k_gemma_tagged.csv"
-  run:
-    import pandas as pd
-    df_cap = pd.read_csv(f"outputs/multi30k/pos/results_{wildcards.lang}.csv")
-    df_txt = pd.read_csv(f"outputs/multi30k/gemma-2b/results_{wildcards.lang}.csv")
+  shell:
+    """
+    python src/combine.py \
+    --lang {wildcards.lang} \
+    --model gemma-2b \
+    --output outputs/results_{wildcards.lang}_multi30k_gemma_tagged.csv 
+    """
 
-    df_cap["gemma-2b_surprisal"] = df_txt["gemma-2b_surprisal"]
-    df_cap["mutual_information"] =  df_cap["gemma-2b_surprisal"] - df_cap["paligemma_surprisal"] 
-    df_cap.to_csv(f"outputs/results_{wildcards.lang}_multi30k_gemma_tagged.csv", index=False)
 rule combine_multi30k_train:
   input:
     "outputs/multi30k_train/pos/results_{lang}.csv",
@@ -129,6 +131,7 @@ rule combine_multi30k_train:
     df_cap["ft-pali_surprisal"] = df_txt["ft-pali_surprisal"]
     df_cap["mutual_information"] =   df_cap["ft-pali_surprisal"] - df_cap["paligemma_surprisal"]
     df_cap.to_csv(f"outputs/results_{wildcards.lang}_multi30k_train_tagged.csv", index=False)
+
 rule combine_multi30k_gemma_train:
   input:
     "outputs/multi30k_train/pos/results_{lang}.csv",
