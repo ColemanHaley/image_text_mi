@@ -36,7 +36,7 @@ IMAGE_TOKEN_ID = 257152
 def get_mask_paligemma(sentence, input_ids, attention_mask, prefix_len):
     img = (input_ids[sentence] == IMAGE_TOKEN_ID).sum().item()
     if img > 0:
-        img += 1
+        img += 2
     pad = abs(attention_mask[sentence].sum().item() - input_ids.size(1))
 
     mask = torch.zeros(input_ids.size(1), dtype=torch.bool)
@@ -59,7 +59,7 @@ def get_logprobs(logits, input_ids, mask_fn, corrector):
         labels = input_ids[i][mask]
         tokens.append(labels)
         remember_me = mask[0]
-        mask = torch.roll(mask,-1)
+        mask = torch.roll(mask, -1)
         mask[0] = remember_me
 
         logprobs = torch.nn.functional.log_softmax(logits[i][mask], dim=-1)
@@ -110,6 +110,7 @@ def predict_step(model, batch, tokenizer, prefix_len, corrector):
         "surprisal": list(flatten(probs)),
         "sentence": list(flatten(index)),
     }
+    print(pd.DataFrame(data))
     return data
 
 
@@ -117,6 +118,7 @@ def prepare_batch(batch, processor, prefix="Caption the image in English."):
     images, captions, image_paths = zip(*batch)
 
     if isinstance(processor, PaliGemmaProcessor):
+        prefix = prefix.strip()
         batch = processor(
             images=images,
             text=[prefix] * len(captions),
@@ -158,6 +160,7 @@ def load_model(cfg):
     elif cfg.name in ["gemma-2b", "ft-pali"]:
         model = AutoModelForCausalLM.from_pretrained(cfg.path)
         processor = AutoTokenizer.from_pretrained(cfg.tok_path, padding_side="right")
+        processor.add_eos_token = True
         # processor.add_special_tokens({"eos_token": "\n"})
     else:
         raise ValueError(f"Model {cfg.name} not implemented.")
@@ -167,7 +170,7 @@ def load_model(cfg):
 def get_data(cfg, processor, tokenizer):
     # compute prefix length
     prefix = f"caption {cfg.lang}\n"
-    prefix_len = len(tokenizer(prefix)["input_ids"])
+    prefix_len = len(tokenizer(prefix)["input_ids"]) - 1
 
     if cfg.dataset.name == "test":
         images = [Image.open("data/multi30k/images/1001465944.jpg")]
@@ -229,6 +232,8 @@ def main(cfg):
     corrector = WhitespaceCorrector(tokenizer)
 
     full_results = []
+
+    pdb.set_trace()
     for batch in tqdm(data):
         with torch.no_grad():
             results = predict_step(
@@ -259,12 +264,14 @@ def main(cfg):
     full_results.drop(columns=["surprisal"], inplace=True)
 
     hydra_output = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
-    out_file = Path(cfg.out_file)
-    with open(f"{hydra_output}/{out_file.name}", "w") as f:
+    out_file = f"{hydra_output}/../../../{cfg.out_file}"
+    # add a date and time column
+    full_results["date"] = pd.to_datetime("today").strftime("%Y-%m-%d-%H-%M")
+    with open(out_file, "w") as f:
         full_results.to_csv(f, index=False)
-    os.symlink(
-        f"{hydra_output}/{out_file.name}", f"{hydra_output}/../../../{cfg.out_file}"
-    )
+    # os.symlink(
+    #     f"{hydra_output}/{out_file.name}", f""
+    # )
 
 
 if __name__ == "__main__":

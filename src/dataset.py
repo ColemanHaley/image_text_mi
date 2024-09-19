@@ -193,7 +193,7 @@ class Multi30kDataset(Dataset):
             img = img.convert(mode="RGB")
         if self.transform is not None:
             img = self.transform(images=img)
-        return img, caption["caption"], caption["image_id"]
+        return img, caption["caption"].strip(), caption["image_id"]
 
 
 class COCODataset(Dataset):

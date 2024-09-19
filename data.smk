@@ -1,18 +1,17 @@
 localrules: xm3600_images, xm3600_annotations, coco_images, coco_imgz, coco_35_annotations
 
 
-rule multi30k_trainz:
-  output:
-    temp("data/multi30k/train.zip")
-  shell:
-    "wget https://zenodo.org/records/4394718/files/Train.zip -O {output}"
+######################
+#  MULTI30K DATASET  #
+######################
 
-rule multi30k_valz:
+rule multi30k_capz:
+  params:
+    split_cap=lambda wildcards: wildcards.split.capitalize()
   output:
-    temp("data/multi30k/val.zip")
+    temp("data/multi30k/{split}.zip")
   shell:
-    "wget https://zenodo.org/records/4394718/files/Val.zip -O {output}"
-
+    "wget https://zenodo.org/records/4394718/files/{params.split_cap}.zip -O {output}"
 
 rule multi30k_caps:
   input:
@@ -42,11 +41,17 @@ rule multi30k_img:
 
 rule multi30k:
   input:
-    "data/multi30k/train",
     "data/multi30k/val",
     "data/multi30k/images",
-  output:
-    temp(touch("data/multi30k/complete"))
+
+rule multi30k_train:
+  input:
+    "data/multi30k/train",
+    "data/multi30k/images"
+
+######################
+#  COCO(35) DATASET  #
+######################
 
 rule coco_images:
     input:
@@ -65,6 +70,41 @@ rule coco_imgz:
     split="train2014|val2014|test2014|val2017|train2017"
   shell:
     "wget http://images.cocodataset.org/zips/{wildcards.split}.zip -O {output}"
+
+rule coco_annotations:
+    output:
+        f"data/coco/annotations/train_caption.json"
+    shell:
+        "wget https://huggingface.co/chaley22/coco_mblip/resolve/main/train_caption.json?download=true -o {output}"
+
+rule coco_35_annotations:
+    output:
+        "data/coco/annotations/{split}_35_caption.jsonl"
+    shell:
+        """
+        wget https://storage.googleapis.com/crossmodal-3600/coco_mt_{wildcards.split}.jsonl.bz2 
+        bunzip2 -f coco_mt_{wildcards.split}.jsonl.bz2 
+        mkdir -p data/coco/annotations
+        mv coco_mt_{wildcards.split}.jsonl data/coco/annotations/{wildcards.split}_35_caption.jsonl
+        """
+
+rule coco35:
+    input:
+      "data/coco/val2017",
+      "data/coco/train2017",
+      "data/coco/annotations/dev_35_caption.jsonl",
+      "data/coco/annotations/train_35_caption.jsonl",
+
+
+######################
+#   XM3600 DATASET   #
+######################
+
+rule xm3600:
+  input:
+    "data/xm3600/images",
+    "data/xm3600/captions.jsonl"
+
 
 rule xm3600_images:
     output:
@@ -86,44 +126,5 @@ rule xm3600_annotations:
     wget https://google.github.io/crossmodal-3600/web-data/captions.zip
     unzip captions.zip -d data/xm3600/
     """
-
-rule coco_35_annotations:
-    output:
-        "data/coco/annotations/{split}_35_caption.jsonl"
-    shell:
-        """
-        wget https://storage.googleapis.com/crossmodal-3600/coco_mt_{wildcards.split}.jsonl.bz2 
-        bunzip2 -f coco_mt_{wildcards.split}.jsonl.bz2 
-        mkdir -p data/coco/annotations
-        mv coco_mt_{wildcards.split}.jsonl data/coco/annotations/{wildcards.split}_35_caption.jsonl
-        """
-
-rule coco_annotations:
-    output:
-        f"data/coco/annotations/train_caption.json"
-    shell:
-        "wget https://huggingface.co/chaley22/coco_mblip/resolve/main/train_caption.json?download=true -o {output}"
-
-rule coco_val:
-    input:
-        "data/coco/val2014",
-        "data/coco/annotations/dev_35_caption.jsonl",
-        "data/coco/annotations/train_caption.json",
-
-rule coco35:
-    input:
-      "data/coco/val2017",
-      "data/coco/train2017",
-      "data/coco/annotations/dev_35_caption.jsonl",
-      "data/coco/annotations/train_35_caption.jsonl",
-    output:
-      temp(touch("data/coco/complete"))
-
-rule xm3600:
-  input:
-    "data/xm3600/images",
-    "data/xm3600/captions.jsonl"
-  output:
-      temp(touch("data/xm3600/complete"))
 
   

@@ -36,7 +36,7 @@ with torch.no_grad():
     img = img.convert("RGB")
     procs = processor(
         images=img,
-        text="caption en\n",
+        text="caption en",
         suffix=cap,
         return_tensors="pt",
     )

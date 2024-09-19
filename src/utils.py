@@ -13,6 +13,7 @@ class WhitespaceCorrector:
                 if tokenizer.decode(token_id).lstrip() != tokenizer.decode(token_id)
             ]
         )
+        self.whitespace_tokens.add(tokenizer.eos_token_id)
         self.whitespace_tensor = torch.tensor(list(self.whitespace_tokens))
 
     def correct_for_spaces(self, token_id, logprobs):
@@ -63,7 +64,7 @@ def renumber_and_join_sents(sents, tokens):
         count += 1
 
         if sent1 != sent2:
-            sentences.extend(["".join(sent_toks).strip()] * count)
+            sentences.extend(["".join(sent_toks[:-1]).strip()] * count)
             total, count, start_char = total + 1, 0, 0
             sent_toks = []
         sentence_ids.append(total)
@@ -71,7 +72,7 @@ def renumber_and_join_sents(sents, tokens):
     # handle the last token
     sent_toks.append(tokens[i + 1])
     start_chars.append(start_char + len(tokens[i + 1]) - len(tokens[i + 1].lstrip()))
-    sentences.extend(["".join(sent_toks).strip()] * (count + 1))
+    sentences.extend(["".join(sent_toks[:-1]).strip()] * (count + 1))
 
     return sentence_ids, sentences, start_chars[1:]
 
