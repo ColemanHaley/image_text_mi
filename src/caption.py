@@ -110,7 +110,7 @@ def predict_step(model, batch, tokenizer, prefix_len, corrector):
         "surprisal": list(flatten(probs)),
         "sentence": list(flatten(index)),
     }
-    print(pd.DataFrame(data))
+    # print(pd.DataFrame(data))
     return data
 
 
@@ -233,7 +233,7 @@ def main(cfg):
 
     full_results = []
 
-    pdb.set_trace()
+    # pdb.set_trace()
     for batch in tqdm(data):
         with torch.no_grad():
             results = predict_step(

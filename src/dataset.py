@@ -9,7 +9,7 @@ from tqdm.rich import tqdm
 
 
 class XM3600Dataset(Dataset):
-    def __init__(self, data_dir, lang, transform=None):
+    def __init__(self, data_dir, split, lang, transform=None):
         self.data_dir = Path(data_dir)
         self.transform = transform
         self.lang = lang
@@ -40,7 +40,7 @@ class XM3600Dataset(Dataset):
 
 
 class XM3600TextDataset(Dataset):
-    def __init__(self, data_dir, lang="all", transform=None):
+    def __init__(self, data_dir, split="all", lang="all", transform=None):
         self.data_dir = Path(data_dir)
         self.transform = transform
         self.lang = lang

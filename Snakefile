@@ -5,7 +5,8 @@ LANGS = [
   'sv', 'sw', 'te', 'th', 'tr', 'uk', 'vi', 'zh'
 ] # Drop quz b/c of COCO. 
 LANGS_MULTI30K = ['ar', 'cs', 'de', 'en', 'fr']
-DATASETS = ['xm3600', 'coco35', 'multi30k', 'multi30k_train']
+DATASETS = ['xm3600', 'coco35']
+MULTI30K = ['multi30k', 'multi30k_train']
 include: "./data.smk"
 
 rule avg_img:
