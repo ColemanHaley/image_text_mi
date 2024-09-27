@@ -33,7 +33,7 @@ rule caption:
       "outputs/{dataset}/{model}/results_{lang}.csv"
   wildcard_constraints:
     lang="|".join(LANGS),
-    dataset="|".join(DATASETS),
+    dataset="|".join(DATASETS+MULTI30K),
     model="gemma-2b|paligemma|ft-pali",
   shell:
     """
@@ -52,7 +52,7 @@ rule pos:
   output:
     "outputs/{dataset}/pos/results_{lang}.csv"
   wildcard_constraints:
-    dataset="|".join(DATASETS),
+    dataset="|".join(DATASETS+MULTI30K),
     lang="|".join(LANGS)
   shell:
     "python src/pos.py {wildcards.lang} {input} > {output}"
@@ -62,6 +62,16 @@ rule lang:
     expand("outputs/{dataset}/{model}/results_{{lang}}.csv", dataset=DATASETS, model=["ft-pali", "pos", "gemma-2b"])
   output:
     touch("outputs/{lang}.done")
+
+rule multi30k_lang:
+  input:
+    expand("outputs/{dataset}/{model}/results_{{lang}}.csv", dataset=DATASETS+MULTI30K, model=["ft-pali", "pos", "gemma-2b"])
+  output:
+    touch("outputs/{lang}.done")
+
+rule all_lang:
+  input:
+    expand("outputs/{lang}.done", lang=LANGS)
 
 rule combine_multi30k:
   input:
@@ -92,6 +102,8 @@ rule combine_multi30k_gemma:
     --model gemma-2b \
     --output outputs/results_{wildcards.lang}_multi30k_gemma_tagged.csv 
     """
+ruleorder:
+  multi30k_lang > lang
 # rule download_3600:
 #   output:
 #       "outputs/results_{lang}_xm.csv"

@@ -63,18 +63,23 @@ def get_logprobs(logits, input_ids, mask_fn, corrector):
         mask[0] = remember_me
 
         logprobs = torch.nn.functional.log_softmax(logits[i][mask], dim=-1)
+        # print(logprobs.shape)
         xent = torch.gather(logprobs, -1, labels.unsqueeze(-1)).squeeze()
         # pdb.set_trace()
+
         for j, token_id in enumerate(labels):
             correction = corrector.correct_for_spaces(token_id.item(), logprobs[j])
+            # print(correction)
+            # print(token_id.item())
+
             # if correction != 0:
             #     print('hi!!')
             if j > 0:
-                xent[j - 1] -= correction
+                xent[j - 1] += correction
             if len(xent) == 1:
-                xent += correction
+                xent -= correction
             else:
-                xent[j] += correction
+                xent[j] -= correction
 
         results.extend((-xent.cpu()).tolist())
     return results, tokens
@@ -173,10 +178,12 @@ def get_data(cfg, processor, tokenizer):
     prefix_len = len(tokenizer(prefix)["input_ids"]) - 1
 
     if cfg.dataset.name == "test":
-        images = [Image.open("data/multi30k/images/1001465944.jpg")]
+        # images = [Image.open("data/multi30k/images/1001465944.jpg")]
+        images = [Image.open("data/multi30k/images/227689211.jpg")]
         images += [Image.open(cfg.dataset.path)] * 4 + [Image.open("test2.jpg")]
         captions = [
-            "A woman with a large purse is walking by a gate.",
+            # "A woman with a large purse is walking by a gate.",
+            "A police officer in his uniform wearing an ear piece.",
             "A test sentence.",
             "A bicycle replica with a clock as the front wheel.",
             "A cat is laying on top of a dryer.",

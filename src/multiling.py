@@ -3,7 +3,8 @@ import itertools
 import os
 import sys
 
-import opinionated
+# import opinionated
+# from opinionated.core import download_googlefont
 import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
@@ -11,13 +12,20 @@ from iso639 import Lang
 from scipy.stats import kendalltau, spearmanr, ttest_ind
 
 
+plt.style.use("src/opinionated_ch.mplstyle")
+
+
+# download_googlefont("EB Garamond", add_to_cache=True)
 def plot_format():
     plt.rcParams["pgf.rcfonts"] = False
     # plt.style.use(
     #     "https://github.com/dhaitz/matplotlib-stylesheets/raw/master/pitayasmoothie-dark.mplstyle"
     # )
     # plt.rcParams.update({"font.family": "serif"})
-    plt.style.use("opinionated_rc")
+    # plt.style.use("opinionated_rc")
+    plt.style.use("src/opinionated_ch.mplstyle")
+
+    # plt.rc("font", family="EB Garamond")
 
     # plt.rcParams["pgf.preamble"] = "\n".join(
     #     [
@@ -275,6 +283,7 @@ def main():
     ax.set_ylabel("PMI")
     ax.set_title(f"PMI by Part of Speech, {args.dataset} dataset")
     plt.savefig(f"figures/{args.dataset}/{args.model}/pos_all.png", bbox_inches="tight")
+    breakpoint()
 
     for pos1, pos2 in itertools.combinations(order, 2):
         t, p = ttest_ind(

@@ -26,6 +26,7 @@ cap_model.to("cuda")
 
 corrector = WhitespaceCorrector(tokenizer)
 cap = "a woman with a large purse is walking by a gate."
+cap = "A police officer in his uniform wearing an ear piece."
 
 toks = tokenizer(cap, return_tensors="pt")
 toks = toks.to("cuda")
@@ -63,6 +64,7 @@ with torch.no_grad():
         correction = corrector.correct_for_spaces(
             toks.input_ids[0, -i + 1].item(), logprobs[0, -i]
         )
+        print(toks.input_ids[0, -i + 1].item())
         print(correction)
         if i < len(toks.input_ids[0]):
             xent[len(toks.input_ids[0]) - i - 1] -= correction
@@ -88,10 +90,10 @@ with torch.no_grad():
         )
         print(correction)
         if i < len(toks.input_ids[0]):
-            xent[len(toks.input_ids[0]) - i - 1] -= correction
-        xent[len(toks.input_ids[0]) - i] += correction
+            xent_cap[len(toks.input_ids[0]) - i - 1] -= correction
+        xent_cap[len(toks.input_ids[0]) - i] += correction
     for tok, x, x_cap in zip(toks.input_ids[0, 1:], xent, xent_cap):
-        print(tokenizer.decode(tok), x.item(), x_cap.item())
+        print(tokenizer.decode(tok), -x.item(), -x_cap.item())
     import pdb
 
     pdb.set_trace()
