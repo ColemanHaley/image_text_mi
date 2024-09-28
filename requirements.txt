@@ -16,7 +16,7 @@ attrs==23.2.0
     # via
     #   jsonschema
     #   referencing
-bitsandbytes==0.43.1
+#bitsandbytes==0.43.1
     # via -r requirements.in
 certifi==2024.7.4
     # via

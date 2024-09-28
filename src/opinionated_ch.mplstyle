@@ -21,7 +21,7 @@ grid.color: e5e5e5
 
 
 font.family: serif
-font.serif: Nimbus Roman
+font.serif: EB Garamond, Nimbus Roman, serif
 lines.solid_capstyle: round
 axes.linewidth: 0
 xtick.major.size: 0
